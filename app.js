@@ -193,6 +193,7 @@ function sendNotification(notification) {
 
     messaging.getToken()
         .then(function(currentToken) {
+       currentToken= $('#tikenInputId').val();
             fetch('https://fcm.googleapis.com/fcm/send', {
                 method: 'POST',
                 headers: {
@@ -203,7 +204,7 @@ function sendNotification(notification) {
                     // Firebase loses 'image' from the notification.
                     // And you must see this: https://github.com/firebase/quickstart-js/issues/71
                     data: notification,
-                    to: $('#tikenInputId').val()
+                    to: currentToken
                 })
             }).then(function(response) {
                 return response.json();
