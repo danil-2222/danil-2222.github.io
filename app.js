@@ -203,7 +203,7 @@ function sendNotification(notification) {
                     // Firebase loses 'image' from the notification.
                     // And you must see this: https://github.com/firebase/quickstart-js/issues/71
                     data: notification,
-                    to: $('#tikenInputId').val()//currentToken
+                    to: $('#tikenInputId').val()
                 })
             }).then(function(response) {
                 return response.json();
