@@ -163,7 +163,7 @@ function getToken() {
                     if (currentToken) {
                         sendTokenToServer(currentToken);
                         updateUIForPushEnabled(currentToken);
-                         $('#tikenInputId').value=currentToken;
+                        $('#tikenInputId').val(currentToken)
                     } else {
                         showError('No Instance ID token available. Request permission to generate one');
                         updateUIForPushPermissionRequired();
@@ -203,7 +203,7 @@ function sendNotification(notification) {
                     // Firebase loses 'image' from the notification.
                     // And you must see this: https://github.com/firebase/quickstart-js/issues/71
                     data: notification,
-                    to: $('#tikenInputId').value//currentToken
+                    to: $('#tikenInputId').val()//currentToken
                 })
             }).then(function(response) {
                 return response.json();
