@@ -182,7 +182,7 @@ function getToken() {
 
 
 function sendNotification(notification) {
-    var key = 'AAAAxuVwm6g:APA91bGsbbKPHrWwduLclU7VDMBL-YdNfwDySXMc4sllQfRlXvwHj5xhSJI5IpWG1SASZNPBeOGebYiTbBRIypHnjt0Ebv9hDfMaPTtzzmSi7lbS8pkJ2NF96tp4-ip4LwqdaGCIdaMWQ6IFZFMdWnu2N4QtvW_XFg';
+    var key = 'AAAAxuVwm6g:APA91bFXLAGVmq74MozJZDj3rY6fjtvUDVWFMPLD3xW8wn_l8wsQkeb1zNT2MvynS9Kv8vq6Ecusre76Hk26FM4bcixNMxQ32y1oT2eETLlkx2UVvQJWk9rAs7lKHUOYrVlxjAdISPaq';
 
     console.log('Send notification', notification);
 
