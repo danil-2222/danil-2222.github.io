@@ -77,9 +77,12 @@ limitations under the License.
 <!-- If you do not serve/host your project using Firebase Hosting see https://firebase.google.com/docs/web/setup -->
 <script src="https://www.gstatic.com/firebasejs/5.8.6/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/5.8.6/firebase-messaging.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.8.6/firebase/init.js"></script>
+
 
 <script>
+   firebase.initializeApp({
+	   			messagingSenderId: '854252886952'
+			});
   // [START get_messaging_object]
   // Retrieve Firebase Messaging object.
   const messaging = firebase.messaging();
