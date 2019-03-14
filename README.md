@@ -1,60 +1,102 @@
-Test Firebase Cloud Messaging
------------------------------
+Firebase Cloud Messaging Quickstart
+===================================
 
-You can test usage on page: https://peter-gribanov.github.io/serviceworker/
+The Firebase Cloud Messaging quickstart demonstrates how to:
+- Request permission to send app notifications to the user.
+- Receive FCM messages using the Firebase Cloud Messaging JavaScript SDK.
 
-<img src="ScreenRecord.gif" alt="" align="center">
+Introduction
+------------
 
-> Firebase loses the `image` from the notification.
-> You can fix the problem by specifying a `image` in `data`.
-> And you must see [this](https://github.com/firebase/quickstart-js/issues/71) issue.
+[Read more about Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging/)
 
+Getting Started
+---------------
 
-Send notification from HTTP client
-----------------------------------
+1. Create your project on the [Firebase Console](https://console.firebase.google.com).
+1. You must have the [Firebase CLI](https://firebase.google.com/docs/cli/) installed. If you don't have it install it with `npm install -g firebase-tools` and then configure it with `firebase login`.
+1. On the command line run `firebase use --add` and select the Firebase project you have created.
+1. On the command line run `firebase serve -p 8081` using the Firebase CLI tool to launch a local server.
+1. Open [http://localhost:8081](http://localhost:8081) in your browser.
+4. Click **REQUEST PERMISSION** button to request permission for the app to send notifications to the browser.
+5. Use the generated Instance ID token (IID Token) to send an HTTP request to FCM that delivers the message to the web application, inserting appropriate values for [`YOUR-SERVER-KEY`](https://console.firebase.google.com/project/_/settings/cloudmessaging) and `YOUR-IID-TOKEN`.
 
+### HTTP
 ```
 POST /fcm/send HTTP/1.1
 Host: fcm.googleapis.com
-Authorization: key=AAAAaGQ_q2M:APA91bGCEOduj8HM6gP24w2LEnesqM2zkL_qx2PJUSBjjeGSdJhCrDoJf_WbT7wpQZrynHlESAoZ1VHX9Nro6W_tqpJ3Aw-A292SVe_4Ho7tJQCQxSezDCoJsnqXjoaouMYIwr34vZTs
+Authorization: key=YOUR-SERVER-KEY
 Content-Type: application/json
 
 {
-  "data": {
-    "title": "Bubble Nebula",
-    "body": "It's found today at 21:00",
-    "icon": "https://peter-gribanov.github.io/serviceworker/Bubble-Nebula.jpg",
-    "image": "https://peter-gribanov.github.io/serviceworker/Bubble-Nebula_big.jpg",
-    "click_action": "https://www.nasa.gov/feature/goddard/2016/hubble-sees-a-star-inflating-a-giant-bubble"
-  }
-  "to": "YOUR-TOKEN-ID"
+  "notification": {
+    "title": "Portugal vs. Denmark",
+    "body": "5 to 1",
+    "icon": "firebase-logo.png",
+    "click_action": "http://localhost:8081"
+  },
+  "to": "YOUR-IID-TOKEN"
 }
 ```
 
-Send notification by cURL
--------------------------
+### Fetch
+```js
+var key = 'YOUR-SERVER-KEY';
+var to = 'YOUR-IID-TOKEN';
+var notification = {
+  'title': 'Portugal vs. Denmark',
+  'body': '5 to 1',
+  'icon': 'firebase-logo.png',
+  'click_action': 'http://localhost:8081'
+};
 
-```bash
-curl -d '
-{
-  "data": {
-    "title": "Bubble Nebula",
-    "body": "It`s found today at 21:00",
-    "icon": "https://peter-gribanov.github.io/serviceworker/Bubble-Nebula.jpg",
-    "image": "https://peter-gribanov.github.io/serviceworker/Bubble-Nebula_big.jpg",
-    "click_action": "https://www.nasa.gov/feature/goddard/2016/hubble-sees-a-star-inflating-a-giant-bubble"
-  }
-  "to": "YOUR-TOKEN-ID"
-}' \
-    -H "Content-Type: application/json" \
-    -H "Authorization: key=AAAAaGQ_q2M:APA91bGCEOduj8HM6gP24w2LEnesqM2zkL_qx2PJUSBjjeGSdJhCrDoJf_WbT7wpQZrynHlESAoZ1VHX9Nro6W_tqpJ3Aw-A292SVe_4Ho7tJQCQxSezDCoJsnqXjoaouMYIwr34vZTs" \
-    -X POST "https://fcm.googleapis.com/fcm/send"
+fetch('https://fcm.googleapis.com/fcm/send', {
+  'method': 'POST',
+  'headers': {
+    'Authorization': 'key=' + key,
+    'Content-Type': 'application/json'
+  },
+  'body': JSON.stringify({
+    'notification': notification,
+    'to': to
+  })
+}).then(function(response) {
+  console.log(response);
+}).catch(function(error) {
+  console.error(error);
+})
 ```
 
-Warning
+### cURL
+```
+curl -X POST -H "Authorization: key=YOUR-SERVER-KEY" -H "Content-Type: application/json" -d '{
+  "notification": {
+    "title": "Portugal vs. Denmark",
+    "body": "5 to 1",
+    "icon": "firebase-logo.png",
+    "click_action": "http://localhost:8081"
+  },
+  "to": "YOUR-IID-TOKEN"
+}' "https://fcm.googleapis.com/fcm/send"
+```
+
+### App focus
+When the app has the browser focus, the received message is handled through
+the `onMessage` callback in `index.html`. When the app does not have browser
+focus then the `setBackgroundMessageHandler` callback in `firebase-messaging-sw.js`
+is where the received message is handled.
+
+The browser gives your app focus when both:
+
+1. Your app is running in the currently selected browser tab.
+2. The browser tab's window currently has focus, as defined by the operating system.
+
+Support
 -------
 
-This application runs in [GitHub Pages](https://pages.github.com/) at address [/serviceworker/](https://peter-gribanov.github.io/serviceworker/) and this path cannot be changed. Therefore, the [original library](http://www.gstatic.com/firebasejs/3.7.2/firebase.js) is [copied](https://github.com/peter-gribanov/serviceworker/blob/master/firebase.js) to this application and the path to `firebase-messaging-sw.js` has been changed.
+https://firebase.google.com/support/
 
-If you want to copy this application to your website and run it at the root path, you must [use](https://github.com/peter-gribanov/serviceworker/blob/master/index.html#L95) the [original library](http://www.gstatic.com/firebasejs/3.7.2/firebase.js) and change [path](https://github.com/peter-gribanov/serviceworker/blob/master/app.js#L100) to the serviceworker.
-# danil-2222.github.io
+License
+-------
+
+© Google, 2016. Licensed under an [Apache-2](../LICENSE) license.
