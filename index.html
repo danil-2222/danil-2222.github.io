@@ -113,6 +113,7 @@ limitations under the License.
       resetUI();
       // [END_EXCLUDE]
     }).catch(function(err) {
+	    alert('Unable to retrieve refreshed token ', err);
       console.log('Unable to retrieve refreshed token ', err);
       showToken('Unable to retrieve refreshed token ', err);
     });
@@ -126,6 +127,7 @@ limitations under the License.
   //   `messaging.setBackgroundMessageHandler` handler.
   messaging.onMessage(function(payload) {
     console.log('Message received. ', payload);
+	   alert('Message received. ', payload);
     // [START_EXCLUDE]
     // Update the UI to include the received message.
     appendMessage(payload);
@@ -146,12 +148,14 @@ limitations under the License.
       } else {
         // Show permission request.
         console.log('No Instance ID token available. Request permission to generate one.');
+	      alert('No Instance ID token available. Request permission to generate one.');
         // Show permission UI.
         updateUIForPushPermissionRequired();
         setTokenSentToServer(false);
       }
     }).catch(function(err) {
       console.log('An error occurred while retrieving token. ', err);
+      alert('An error occurred while retrieving token. ', err);
       showToken('Error retrieving Instance ID token. ', err);
       setTokenSentToServer(false);
     });
@@ -171,10 +175,13 @@ limitations under the License.
   function sendTokenToServer(currentToken) {
     if (!isTokenSentToServer()) {
       console.log('Sending token to server...');
+	    alert('Sending token to server...');
       // TODO(developer): Send the current token to your server.
       setTokenSentToServer(true);
     } else {
       console.log('Token already sent to server so won\'t send it again ' +
+          'unless it changes');
+	    alert('Token already sent to server so won\'t send it again ' +
           'unless it changes');
     }
 
@@ -199,9 +206,11 @@ limitations under the License.
 
   function requestPermission() {
     console.log('Requesting permission...');
+	  alert('Requesting permission...');
     // [START request_permission]
     messaging.requestPermission().then(function() {
       console.log('Notification permission granted.');
+	    alert('Notification permission granted.');
       // TODO(developer): Retrieve an Instance ID token for use with FCM.
       // [START_EXCLUDE]
       // In many cases once an app has been granted notification permission, it
@@ -210,6 +219,7 @@ limitations under the License.
       // [END_EXCLUDE]
     }).catch(function(err) {
       console.log('Unable to get permission to notify.', err);
+	    alert('Unable to get permission to notify.', err);
     });
     // [END request_permission]
   }
@@ -220,6 +230,7 @@ limitations under the License.
     messaging.getToken().then(function(currentToken) {
       messaging.deleteToken(currentToken).then(function() {
         console.log('Token deleted.');
+	      alert('Token deleted.');
         setTokenSentToServer(false);
         // [START_EXCLUDE]
         // Once token is deleted update UI.
@@ -227,10 +238,12 @@ limitations under the License.
         // [END_EXCLUDE]
       }).catch(function(err) {
         console.log('Unable to delete token. ', err);
+	      alert('Unable to delete token. ', err);
       });
       // [END delete_token]
     }).catch(function(err) {
       console.log('Error retrieving Instance ID token. ', err);
+	    alert('Error retrieving Instance ID token. ', err);
       showToken('Error retrieving Instance ID token. ', err);
     });
 
