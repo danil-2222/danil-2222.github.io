@@ -1,16 +1,43 @@
-<!DOCTYPE html>
-<html>
-<body>
-  <p style="text-align: center">
-  <button onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/users';">Користувачі</button>
- <button  onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/current';">Усі повідомлення</button>
- <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/users">Користувачі у новому вікні   .</a>
- <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/current">.   Усі повідомлення у новому вікні</a>
-</p>
+ if(event.data.eventName=="notification"){
+    //	 console.log('event  notification!!!!'+ JSON.stringify(event.data));
+    //console.log('event123.name--'+ JSON.stringify(event.data.data.notification.payload.sender));
+    //console.log('event123.msg---'+ JSON.stringify(event.data.data.notification.payload.message));
+   	//{"eventName":"notification","data":
+   	//{"notification":
+   	//{"title":"ChatAdmin","text":"cccc","payload":
+	//{"_id":"TSjDbM5MXEtiSC4p2","rid":"Y4HFkNBW9FzLsGcZYxSf5TdudA22p7x6Q7","sender":
+	//{"_id":"xSf5TdudA22p7x6Q7","username":"a-bot","name":"ChatAdmin"},"type":"d","message":{"msg":"cccc"}}},"fromOpenedRoom":false,"hasFocus":false}}
+    var msgV =event.data.data.notification.payload.message.msg+'';
+  	var nameMsgV=event.data.data.notification.payload.sender.name+'';
+	var usernameMsgV=event.data.data.notification.payload.sender.username+'';
+	var notificationId=event.data.data.notification.payload._id+'';
+	 
+	
+	 	 if (!("Notification" in window)) { 
+			  alert("This browser does not support desktop notification");  
+	  	 }else if (Notification.permission === "granted") {  
+		  
+	  		 spawnNotification(msgV,'#{chatBean.lincForIFrame}/avatar/'+usernameMsgV,nameMsgV,notificationId);  
+	 	 }else if (Notification.permission !== 'denied') {
+		  
+		  		Notification.requestPermission(function (permission) {
+			 if (permission === "granted") { 
+				 spawnNotification(msgV,'#{chatBean.lincForIFrame}/avatar/'+usernameMsgV,nameMsgV,notificationId);
+				  
+				  }   
+			 }); 
+		  		
+		}
+	
+ 	function spawnNotification(theBody,theIcon,theTitle,theTag) {
+ 		  var options = {
+ 		      body: theBody,
+ 		      icon: theIcon,
+ 		      tag: theTag
+ 		  }
+ 		 
+ 		  var n = new Notification(theTitle,options);
+ 		}
   
-<iframe id="myIframe123" src="https://sedchat.sichbank.com/livechat-manager/users" width="100%" height="100%" style="position: absolute; height: 100%; border: none">
-</iframe>
 
-</body>
-</html>
-
+     }
