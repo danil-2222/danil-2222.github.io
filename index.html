@@ -1,4 +1,32 @@
- if(event.data.eventName=="notification"){
+<!DOCTYPE html>
+<html>
+<body>
+  <p style="text-align: center">
+  <button onclick="showHideMenuInChat();">123</button>
+  <button onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/users';">Користувачі</button>
+ <button  onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/current';">Усі повідомлення</button>
+ <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/users">Користувачі у новому вікні   .</a>
+ <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/current">.   Усі повідомлення у новому вікні</a>
+</p>
+  
+<iframe id="myIframe123" src="https://sedchat.sichbank.com/livechat-manager/users" width="90%" height="100%" style="position: absolute; height: 100%; border: none">
+</iframe>
+
+<script>
+
+function showHideMenuInChat() {
+     if(document.getElementById('myIframe123')!=null){
+ 		document.getElementById('myIframe123').contentWindow.postMessage("showHideMenuInChat", '*'); }
+     }
+
+
+ if(window.onmessage==null){
+    	 console.log('START  window.onmessage');
+     //window.addEventListener("message", receiveMessage, false);
+     window.onmessage=receiveMessage;}
+     
+     function receiveMessage(event){
+      if(event.data.eventName=="notification"){
     //	 console.log('event  notification!!!!'+ JSON.stringify(event.data));
     //console.log('event123.name--'+ JSON.stringify(event.data.data.notification.payload.sender));
     //console.log('event123.msg---'+ JSON.stringify(event.data.data.notification.payload.message));
@@ -41,3 +69,11 @@
   
 
      }
+     
+     }
+
+</script>
+
+
+</body>
+</html>
