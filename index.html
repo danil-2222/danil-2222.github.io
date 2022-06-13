@@ -2,11 +2,11 @@
 <html>
 <body>
   <p style="text-align: center">
-  <button onclick="showHideMenuInChat();">123</button>
-  <button onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/users';">Користувачі</button>
+   <button onclick="showHideMenuInChat();">Поточні чати</button>
+   <button onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/users';">Користувачі</button>  
  <button  onclick="document.getElementById('myIframe123').src='https://sedchat.sichbank.com/livechat-manager/current';">Усі повідомлення</button>
  <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/users">Користувачі у новому вікні   .</a>
- <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/current">.   Усі повідомлення у новому вікні</a>
+ <a target="_blank" href="https://sedchat.sichbank.com/livechat-manager/current">.   Усі повідомлення у новому вікні</a> 
 </p>
   
 <iframe id="myIframe123" src="https://sedchat.sichbank.com/livechat-manager/users" width="90%" height="100%" style="position: absolute; height: 100%; border: none">
@@ -14,6 +14,11 @@
 
 <script>
 
+ document.getElementById('myIframe123').onload = function() {
+  timeoutID = window.setTimeout(showHideMenuInChat(), 5000);
+ console.log('I is Load!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!' );
+           
+        }
 function showHideMenuInChat() {
      if(document.getElementById('myIframe123')!=null){
  		document.getElementById('myIframe123').contentWindow.postMessage("showHideMenuInChat", '*'); }
@@ -45,12 +50,12 @@ function showHideMenuInChat() {
 			  alert("This browser does not support desktop notification");  
 	  	 }else if (Notification.permission === "granted") {  
 		  
-	  		 spawnNotification(msgV,'#{chatBean.lincForIFrame}/avatar/'+usernameMsgV,nameMsgV,notificationId);  
+	  		 spawnNotification(msgV,'https://sedchat.sichbank.com/avatar/'+usernameMsgV,nameMsgV,notificationId);  
 	 	 }else if (Notification.permission !== 'denied') {
 		  
 		  		Notification.requestPermission(function (permission) {
 			 if (permission === "granted") { 
-				 spawnNotification(msgV,'#{chatBean.lincForIFrame}/avatar/'+usernameMsgV,nameMsgV,notificationId);
+				 spawnNotification(msgV,'https://sedchat.sichbank.com/avatar/'+usernameMsgV,nameMsgV,notificationId);
 				  
 				  }   
 			 }); 
