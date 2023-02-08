@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<input type="text" id="name" onchange="myFunction(this.value)">
+<p id="myP">This is a paragraph.</p>
+
+
+
+ <script>
+   
+
+
+const json2 = '{"1":{"color":"#ff855723","info":"ОСН КОЛІР1"},"2":{"color":"#ffa2984c","info":"ОСН КОЛІР2"},"3":{"color":"#fffa7f19","info":"ОСН КОЛІР3"},"4":{"color":"#ff855723","info":"textCARD"},"5":{"color":"#ff000000","info":"textBlackvsWhite"},"6":{"color":"#ffffffff","info":"textWhitevsAnother1"},"7":{"color":"#ff000000","info":"textBotombar"},"8":{"color":"#ffffffff","info":"bottomNavBarColor"},"9":{"color":"#ffe9e9e9","info":" Загальній фон основної панелі: # e9e9e9"},"10":{"color":["#ffd7b262","#ff855723"],"info":"osnovaGradient"},"11":{"color":["#ffdfc48d","#ffc4a46b","#ff936531"],"info":" Клавіші «Мої фінанси» та «Обмін»:"},"12":{"color":"#ffffffff","info":"Обводка (Stroke) кнопок та клавІш:"},"13":{"color":"#ffd7b262","info":" лого банк на карточке #d7b262 (Голд)."},"14":{"color":"#ffb2b2b2","info":"Shadow (Тень кнопок):b2b2b2"}}';
+ myFunction(json2);
+document.getElementById("name").value=json2;
+function myFunction(json) {
+const obj = JSON.parse(json);
+
+var s="";
+var lengthMyMap = 1;
+	for(var k in obj){ 
+		if(obj.hasOwnProperty(k)) {
+			
+            
+            
+            
+      console.log(obj[lengthMyMap].color)
+       
+     
+      if((obj[lengthMyMap].color+"").indexOf(",")==-1){
+      console.log("sss001110=");
+      console.log(obj[lengthMyMap].color.length);
+      
+      s=s+""+lengthMyMap+"==="+obj[lengthMyMap].info+" "+(obj[lengthMyMap].color+"").replace("#ff","#")+"<h1 style='background-color: "+(obj[lengthMyMap].color+"").replace("#ff","#")+";'>"+obj[lengthMyMap].info+"</h1>"
+      }else{
+       console.log("sss000=");console.log(obj[lengthMyMap].color.length);
+  
+      var sss=obj[lengthMyMap].color;
+      console.log("sss=");console.log(sss);
+      s=s+""+lengthMyMap+"==="+obj[lengthMyMap].info+" "+(obj[lengthMyMap].color+"").replace("#ff","#")+"<h1 style='background: linear-gradient("+(sss+"").replace("#ff","#")+");'>"+obj[lengthMyMap].info+"</h1>";
+      
+        for(var i=0;i< obj[lengthMyMap].color.length;i++)
+      { 
+      
+       s=s+"<h1 style='background-color: "+(obj[lengthMyMap].color[i]+"").replace("#ff","#")+";'>"+i+"</h1>";
+      
+      }
+      }
+      
+      
+      
+      
+      lengthMyMap++;
+		}
+  }
+ 
+document.getElementById("myP").innerHTML=s;
+
+}
+      
+  </script>
+</body>
+</html>
+
