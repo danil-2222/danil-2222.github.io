@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+
+<script>
+window.addEventListener("message", (event) => {
+ console.log("addEventListener");
+ Print.postMessage(event);
+  console.log(event);
+}, false);
+function createiframe( ls){
+
+document.getElementById("hello").innerHTML="";
+
+var list=ls;
+
+for(var i=0; i<list.length;i++){
+
+var link = document.createElement("iframe");
+link.setAttribute("src", list[i]);
+link.setAttribute("height", "500");
+link.setAttribute("width", "500");
+link.setAttribute("title", "Iframe Example");
+
+document.getElementById("hello").appendChild(link);
+
+
+}
+
+
+}
+
+ document.addEventListener("DOMContentLoaded", createiframe2);
+function createiframe2( ){
+
+document.getElementById("hello").innerHTML="";
+
+var list=|ListIframe|;
+
+for(var i=0; i<list.length;i++){
+
+var link = document.createElement("iframe");
+link.setAttribute("src", list[i]);
+link.setAttribute("height", "500");
+link.setAttribute("width", "500");
+link.setAttribute("title", "Iframe Example");
+link.setAttribute("allowfullscreen", "");
+link.setAttribute("frameborder", "0");
+
+document.getElementById("hello").appendChild(link);
+
+
+}
+
+
+}
+</script>
+<h1 style="text-align:center"><span style="color:#e67e22;"><span style="font-size:29.3333px;"><font face="Georgia, serif">Вітаємо!&nbsp;</font></span></span></h1>
+
+<p style="margin-left: 40px; text-align: center;"><span style="color:#e67e22;">Дотримуйтесь інструкції на екрані</span></p>
+<div id="hello">
+</div>
+
+
+<!--<div onClick='createiframe(["https://as.test.upc.ua/api/v2/brw/init/mon?t=e6564115-f665-462e-b09e-9c3b6580b773","https://as.test.upc.ua/api/v2/brw/callback?transId=e6564115-f665-462e-b09e-9c3b6580b773&t=nIZkNQxzMhYUjNpMJdoLYX2OM22zN6oVBL8Fa8lGRgA3YMeGL9AUkUKyId1uko6wIMdgOwQt"]);'>
+1
+    1
+    1
+<p/>1<p/>1<p/>12<p/>1<p/>1<p/><p/>1<p/>1<p/>12<p/>1<p/>1<p/><p/>1<p/>1<p/>12<p/>1<p/>1<p/><p/>1<p/>1<p/>12<p/>1<p/>1<p/><p/>1<p/>1<p/>12<p/>1<p/>1<p/>
+    1<p/>
+    1
+    1
+    1
+    1
+
+123
+
+</div>-->
+
+</body>
+
+</html>
+
