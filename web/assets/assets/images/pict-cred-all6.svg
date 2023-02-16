@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="216px" height="216px" viewBox="0 0 216 216" enable-background="new 0 0 216 216" xml:space="preserve">
+
+<g id="ok2">
+	<g>
+		<polygon fill-rule="evenodd" clip-rule="evenodd" stroke="#000000" stroke-width="0.5669" stroke-miterlimit="22.9256" points="
+			59.813,69.611 149.808,69.611 139.009,80.411 70.612,80.411 70.612,145.205 151.007,145.205 151.007,106.387 161.806,95.587 
+			161.806,157.204 59.813,157.204 59.813,69.611 		"/>
+		<polygon fill-rule="evenodd" clip-rule="evenodd" stroke="#000000" stroke-width="0.5669" stroke-miterlimit="22.9256" points="
+			178.286,68.605 114.884,132.007 81.693,98.815 89.329,91.18 114.036,115.886 169.802,60.12 178.286,68.605 		"/>
+	</g>
+</g>
+</svg>
