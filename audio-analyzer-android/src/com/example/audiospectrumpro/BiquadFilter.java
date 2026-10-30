@@ -8,6 +8,8 @@ public class BiquadFilter {
     private float x1, x2, y1, y2;
     private Type type = Type.ALLPASS;
 
+    public synchronized Type getType() { return type; }
+
     public synchronized void setFilter(Type type, float sampleRate) {
         this.type = type;
         x1 = x2 = y1 = y2 = 0;

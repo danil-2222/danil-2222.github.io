@@ -19,7 +19,6 @@ import javax.microedition.khronos.opengles.GL10;
 public class Waterfall3DView extends GLSurfaceView implements GLSurfaceView.Renderer {
     private static final int ROWS = 72;
     private static final int COLS = 160;
-    private static final float DB_MIN = -120f, DB_MAX = -10f;
 
     private static final String VS =
             "uniform mat4 u_mvp;\n" +
@@ -42,6 +41,7 @@ public class Waterfall3DView extends GLSurfaceView implements GLSurfaceView.Rend
 
     private volatile Palettes.Palette palette = Palettes.Palette.SPECTRUM;
     private volatile boolean logScale = true;
+    private volatile float dbMin = -120f, dbMax = -10f;
     private float rotX = 0, rotY = -25;
     private float lastX, lastY;
     private int program, uMvp, aPos, aCol;
@@ -64,14 +64,16 @@ public class Waterfall3DView extends GLSurfaceView implements GLSurfaceView.Rend
         requestRender();
     }
 
+    public void setDbRange(float top, float bottom) { dbMax = top; dbMin = bottom; }
+
     public void addFrame(AudioEngine.Frame f) {
         float fMax = Math.min(20000f, f.sampleRate / 2f);
-        SpectrumMath.columns(f.spectrumDb, f.binHz, logScale, fMax, scratch);
+        SpectrumMath.columns(f.spectrumDb, f.binHz, logScale, logScale ? SpectrumMath.LOG_F_MIN : 0f, fMax, scratch);
         synchronized (history) {
             head = (head + 1) % ROWS;
             float[] row = history[head];
             for (int i = 0; i < COLS; i++) {
-                row[i] = Math.max(0f, Math.min(1f, (scratch[i] - DB_MIN) / (DB_MAX - DB_MIN)));
+                row[i] = Math.max(0f, Math.min(1f, (scratch[i] - dbMin) / (dbMax - dbMin)));
             }
         }
         requestRender();

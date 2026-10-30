@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -7,96 +8,160 @@
     android:background="#080C14">
 
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
-        android:paddingTop="6dp"
-        android:background="#0F172A">
-        <TextView android:id="@+id/txtPeakFreq" style="@style/Hud" android:text="— Hz" android:textColor="#00F0FF" />
-        <TextView android:id="@+id/txtNote" style="@style/Hud" android:text="—" android:textColor="#39FF14" />
-        <TextView android:id="@+id/txtBpm" style="@style/Hud" android:text="— BPM" android:textColor="#FF007F" />
-    </LinearLayout>
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="6dp"
-        android:background="#0F172A">
-        <TextView android:id="@+id/txtThd" style="@style/Hud" android:text="THD —" android:textColor="#FFE600" />
-        <TextView android:id="@+id/txtSnr" style="@style/Hud" android:text="SNR —" android:textColor="#FF8800" />
-        <TextView android:id="@+id/txtRms" style="@style/Hud" android:text="RMS —" android:textColor="#9AA9BC" />
-    </LinearLayout>
-
-    <FrameLayout
+        android:id="@+id/displayColumn"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1.3"
-        android:background="#000000">
-        <com.example.audiospectrumpro.VisualizerView
-            android:id="@+id/visualizer2D"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-        <com.example.audiospectrumpro.Waterfall3DView
-            android:id="@+id/visualizer3D"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-    </FrameLayout>
+        android:layout_weight="1.4"
+        android:orientation="vertical">
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
         <LinearLayout
+            android:id="@+id/hud"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="10dp">
-
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:background="#0F172A">
             <LinearLayout style="@style/Row">
-                <Button android:id="@+id/btnStart" style="@style/Btn" android:text="Старт" />
-                <Button android:id="@+id/btnFreeze" style="@style/Btn" android:text="Пауза" android:layout_marginStart="6dp" />
-                <Button android:id="@+id/btnRecord" style="@style/Btn" android:text="Запис WAV" android:layout_marginStart="6dp" />
+                <TextView android:id="@+id/txtPeakFreq" style="@style/Hud" android:text="— Hz" android:textColor="#00F0FF" />
+                <TextView android:id="@+id/txtNote" style="@style/Hud" android:text="—" android:textColor="#39FF14" />
+                <TextView android:id="@+id/txtRms" style="@style/Hud" android:text="RMS —" android:textColor="#9AA9BC" />
             </LinearLayout>
             <LinearLayout style="@style/Row">
-                <Button android:id="@+id/btnCsv" style="@style/Btn" android:text="CSV" />
-                <Button android:id="@+id/btnPng" style="@style/Btn" android:text="PNG" android:layout_marginStart="6dp" />
-                <Button android:id="@+id/btnResetPeaks" style="@style/Btn" android:text="Скинути піки" android:layout_marginStart="6dp" />
+                <TextView android:id="@+id/txtThd" style="@style/Hud" android:text="THD —" android:textColor="#FFE600" />
+                <TextView android:id="@+id/txtThdN" style="@style/Hud" android:text="THD+N —" android:textColor="#FF8800" />
+                <TextView android:id="@+id/txtSnr" style="@style/Hud" android:text="SNR —" android:textColor="#FF007F" />
             </LinearLayout>
+        </LinearLayout>
 
-            <TextView style="@style/Label" android:text="Режим відображення" />
-            <Spinner android:id="@+id/spinMode" style="@style/Picker" />
-            <TextView style="@style/Label" android:text="Палітра" />
-            <Spinner android:id="@+id/spinPalette" style="@style/Picker" />
-            <TextView style="@style/Label" android:text="Розмір FFT" />
-            <Spinner android:id="@+id/spinFft" style="@style/Picker" />
-            <CheckBox android:id="@+id/chkLog" style="@style/Check" android:text="Логарифмічна шкала частот" android:checked="true" />
-            <CheckBox android:id="@+id/chkPeak" style="@style/Check" android:text="Утримання піків" android:checked="true" />
-            <TextView android:id="@+id/lblSmoothing" style="@style/Label" android:text="Згладжування" />
-            <SeekBar android:id="@+id/seekSmoothing" style="@style/Slider" />
-            <TextView android:id="@+id/lblGain" style="@style/Label" android:text="Підсилення входу" />
-            <SeekBar android:id="@+id/seekGain" style="@style/Slider" />
-            <TextView style="@style/Label" android:text="Фільтр" />
-            <Spinner android:id="@+id/spinFilter" style="@style/Picker" />
-            <TextView style="@style/Label" android:text="Джерело сигналу" />
-            <Spinner android:id="@+id/spinSource" style="@style/Picker" />
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#000000">
+            <com.example.audiospectrumpro.VisualizerView
+                android:id="@+id/visualizer2D"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+            <com.example.audiospectrumpro.Waterfall3DView
+                android:id="@+id/visualizer3D"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/controlsColumn"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="#0B111C">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:background="#0F172A">
+        <TextView android:id="@+id/tabMain" style="@style/Tab" android:text="Керування" />
+        <TextView android:id="@+id/tabDisplay" style="@style/Tab" android:text="Вигляд" />
+        <TextView android:id="@+id/tabAnalysis" style="@style/Tab" android:text="Аналіз" />
+        <TextView android:id="@+id/tabGen" style="@style/Tab" android:text="Генератор" />
+        </LinearLayout>
+        <ScrollView
+            android:id="@+id/controlsScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
             <LinearLayout
-                android:id="@+id/genPanel"
+                android:id="@+id/panelMain"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:visibility="gone">
-            <TextView style="@style/Label" android:text="Форма сигналу генератора" />
-            <Spinner android:id="@+id/spinWave" style="@style/Picker" />
-            <TextView android:id="@+id/lblGenFreq" style="@style/Label" android:text="Частота генератора" />
-            <SeekBar android:id="@+id/seekGenFreq" style="@style/Slider" />
-            <TextView android:id="@+id/lblGenVol" style="@style/Label" android:text="Рівень генератора" />
-            <SeekBar android:id="@+id/seekGenVol" style="@style/Slider" />
+                android:padding="10dp">
+                <LinearLayout style="@style/Row">
+                    <Button android:id="@+id/btnStart" style="@style/Btn" android:text="Старт" />
+                    <Button android:id="@+id/btnFreeze" style="@style/Btn" android:text="Пауза" android:layout_marginStart="6dp" />
+                    <Button android:id="@+id/btnRecord" style="@style/Btn" android:text="Запис WAV" android:layout_marginStart="6dp" />
+                </LinearLayout>
+                <LinearLayout style="@style/Row">
+                    <Button android:id="@+id/btnReference" style="@style/Btn" android:text="Еталон" />
+                    <Button android:id="@+id/btnResetPeaks" style="@style/Btn" android:text="Скинути піки" android:layout_marginStart="6dp" />
+                    <Button android:id="@+id/btnFullscreen" style="@style/Btn" android:text="На весь екран" android:layout_marginStart="6dp" />
+                </LinearLayout>
+                <LinearLayout style="@style/Row">
+                    <Button android:id="@+id/btnCsv" style="@style/Btn" android:text="Зберегти CSV" />
+                    <Button android:id="@+id/btnPng" style="@style/Btn" android:text="Знімок PNG" android:layout_marginStart="6dp" />
+                </LinearLayout>
+                <TextView style="@style/Label" android:text="Режим відображення" />
+                <Spinner android:id="@+id/spinMode" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Джерело сигналу для аналізу" />
+                <Spinner android:id="@+id/spinSource" style="@style/Picker" />
+                <TextView style="@style/Hint" android:text="Графік: торкніться — курсор, два пальці — масштаб і зсув, подвійний дотик — скинути масштаб, довге натискання — повний екран." />
             </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
+            <LinearLayout
+                android:id="@+id/panelDisplay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+                <TextView style="@style/Label" android:text="Палітра" />
+                <Spinner android:id="@+id/spinPalette" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Діапазон рівнів" />
+                <Spinner android:id="@+id/spinRange" style="@style/Picker" />
+                <CheckBox android:id="@+id/chkLog" style="@style/Check" android:text="Логарифмічна шкала частот" />
+                <CheckBox android:id="@+id/chkPeak" style="@style/Check" android:text="Утримання піків" />
+                <CheckBox android:id="@+id/chkPeakLabels" style="@style/Check" android:text="Підписи трьох найбільших піків" />
+                <TextView android:id="@+id/lblA4" style="@style/Label" android:text="Тюнер: частота ля першої октави" />
+                <SeekBar android:id="@+id/seekA4" style="@style/Slider" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/panelAnalysis"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+                <TextView style="@style/Label" android:text="Тип входу мікрофона" />
+                <Spinner android:id="@+id/spinMic" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Частота дискретизації" />
+                <Spinner android:id="@+id/spinRate" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Розмір FFT" />
+                <Spinner android:id="@+id/spinFft" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Віконна функція" />
+                <Spinner android:id="@+id/spinWindow" style="@style/Picker" />
+                <TextView android:id="@+id/lblSmoothing" style="@style/Label" android:text="Згладжування" />
+                <SeekBar android:id="@+id/seekSmoothing" style="@style/Slider" />
+                <TextView android:id="@+id/lblGain" style="@style/Label" android:text="Підсилення входу" />
+                <SeekBar android:id="@+id/seekGain" style="@style/Slider" />
+                <TextView android:id="@+id/lblCal" style="@style/Label" android:text="Калібрування" />
+                <SeekBar android:id="@+id/seekCal" style="@style/Slider" />
+                <TextView style="@style/Label" android:text="Фільтр" />
+                <Spinner android:id="@+id/spinFilter" style="@style/Picker" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/panelGen"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+                <TextView style="@style/Label" android:text="Форма сигналу" />
+                <Spinner android:id="@+id/spinWave" style="@style/Picker" />
+                <TextView android:id="@+id/lblGenFreq" style="@style/Label" android:text="Частота" />
+                <SeekBar android:id="@+id/seekGenFreq" style="@style/Slider" />
+                <TextView android:id="@+id/lblGenVol" style="@style/Label" android:text="Рівень" />
+                <SeekBar android:id="@+id/seekGenVol" style="@style/Slider" />
+                <CheckBox android:id="@+id/chkPlay" style="@style/Check" android:text="Відтворювати через динамік" />
+                <TextView style="@style/Hint" android:text="Щоб виміряти АЧХ динаміка або кімнати: увімкніть відтворення, оберіть рожевий шум або свіп, а джерелом аналізу залиште мікрофон." />
+            </LinearLayout>
+            </FrameLayout>
+        </ScrollView>
+    </LinearLayout>
 </LinearLayout>

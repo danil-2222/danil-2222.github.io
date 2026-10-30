@@ -7,34 +7,44 @@ import android.media.MediaRecorder;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Random;
 
 /**
  * Captures audio (microphone or internal test generator), runs a windowed FFT on a
  * sliding buffer and publishes spectrum frames plus derived measurements.
  */
 public class AudioEngine {
-    public static final int SAMPLE_RATE = 44100;
-    public static final float MIN_DB = -120f;
+    public static final float MIN_DB = -140f;
     private static final int HOP = 1024;
+    /** MediaRecorder.AudioSource.UNPROCESSED (API 24); the build targets the API 23 stubs. */
+    public static final int SOURCE_UNPROCESSED = 9;
 
     public enum SourceType { MIC, GENERATOR }
-    public enum GenWaveform { SINE, SQUARE, SAWTOOTH, TRIANGLE, WHITE_NOISE, PINK_NOISE, LOG_SWEEP }
+    public enum WindowType { HANN, HAMMING, BLACKMAN_HARRIS, FLAT_TOP, RECTANGULAR }
 
-    /** Immutable snapshot handed to the UI. */
+    /** Immutable snapshot handed to the UI. Levels include the calibration offset. */
     public static final class Frame {
         public int fftSize;
         public int sampleRate;
         public float binHz;
+        /** Equivalent noise bandwidth of the window, in bins. */
+        public float enbw;
+        /** Offset already added to every level below; subtract it to get dBFS. */
+        public float calibrationDb;
         public float[] spectrumDb;
         public float[] peakHoldDb;
         public float[] time;
         public float peakFreqHz;
         public float peakDb;
         public float thd;
+        public float thdN;
         public float snr;
         public float rmsDb;
+        public float clipPercent;
         public int bpm;
+        /** True when the spectrum is dominated by one tone, so THD/SNR are meaningful. */
+        public boolean tonal;
+        /** Sequence number; gaps mean the UI skipped frames. */
+        public long index;
     }
 
     public interface Listener {
@@ -44,18 +54,20 @@ public class AudioEngine {
 
     private final Listener listener;
     private final BiquadFilter filter = new BiquadFilter();
-    private final Random random = new Random();
+    private final SignalGenerator generator = new SignalGenerator();
 
     private volatile SourceType sourceType = SourceType.MIC;
-    private volatile GenWaveform genWaveform = GenWaveform.SINE;
-    private volatile float genFreq = 1000f;
-    private volatile float genVol = 0.5f;
+    private volatile int micSource = SOURCE_UNPROCESSED;
+    private volatile int sampleRate = 48000;
     private volatile float gainLinear = 1f;
+    private volatile float calibrationDb = 0f;
     private volatile float smoothing = 0.6f;
     private volatile int requestedFftSize = 4096;
+    private volatile WindowType requestedWindow = WindowType.HANN;
     private volatile boolean frozen;
     private volatile boolean running;
     private volatile boolean resetPeaks;
+    private volatile int actualSampleRate;
 
     private Thread thread;
     private AudioRecord record;
@@ -66,45 +78,66 @@ public class AudioEngine {
     }
 
     public void setSourceType(SourceType t) { sourceType = t; }
-    public void setGenWaveform(GenWaveform w) { genWaveform = w; }
-    public void setGenFreq(float f) { genFreq = f; }
-    public void setGenVol(float v) { genVol = v; }
     public void setInputGainDb(float db) { gainLinear = (float) Math.pow(10, db / 20.0); }
-    public void setSmoothing(float s) { smoothing = Math.max(0f, Math.min(0.95f, s)); }
+    public void setCalibrationDb(float db) { calibrationDb = db; }
+    public void setSmoothing(float s) { smoothing = Math.max(0f, Math.min(0.97f, s)); }
     public void setFftSize(int size) { requestedFftSize = size; }
-    public void setFilter(BiquadFilter.Type type) { filter.setFilter(type, SAMPLE_RATE); }
+    public void setWindow(WindowType w) { requestedWindow = w; }
+    public void setFilter(BiquadFilter.Type type) { filter.setFilter(type, actualSampleRate > 0 ? actualSampleRate : sampleRate); }
     public void setFrozen(boolean f) { frozen = f; }
     public boolean isFrozen() { return frozen; }
     public boolean isRunning() { return running; }
     public void resetPeakHold() { resetPeaks = true; }
+    public int getSampleRate() { return actualSampleRate > 0 ? actualSampleRate : sampleRate; }
+
+    /** Takes effect on the next start(). */
+    public void setMicSource(int source) { micSource = source; }
+
+    /** Takes effect on the next start(). */
+    public void setSampleRate(int rate) { sampleRate = rate; }
 
     /** @param micAllowed whether RECORD_AUDIO is granted; without it only the generator works. */
     public synchronized void start(boolean micAllowed) {
         if (running) return;
-        if (micAllowed) {
-            int min = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT);
-            try {
-                AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                        Math.max(min, HOP * 2 * 8));
-                if (r.getState() == AudioRecord.STATE_INITIALIZED) {
-                    r.startRecording();
-                    record = r;
-                } else {
-                    r.release();
-                    listener.onError("Не вдалося відкрити мікрофон");
-                }
-            } catch (Exception e) {
-                listener.onError("Мікрофон недоступний: " + e.getMessage());
-            }
-        }
+        actualSampleRate = sampleRate;
+        if (micAllowed) record = openRecord();
+        filter.setFilter(filter.getType(), actualSampleRate);
         running = true;
         thread = new Thread(new Runnable() {
             @Override public void run() { loop(); }
         }, "AudioEngine");
         thread.setPriority(Thread.MAX_PRIORITY);
         thread.start();
+    }
+
+    /** Tries the preferred source and rate first, then falls back to safer combinations. */
+    private AudioRecord openRecord() {
+        int[] sources = {micSource, MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC};
+        int[] rates = {sampleRate, 48000, 44100};
+        String lastError = null;
+        for (int src : sources) {
+            for (int rate : rates) {
+                int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+                if (min <= 0) continue;
+                try {
+                    AudioRecord r = new AudioRecord(src, rate, AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT, Math.max(min, HOP * 2 * 8));
+                    if (r.getState() == AudioRecord.STATE_INITIALIZED) {
+                        r.startRecording();
+                        if (r.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                            actualSampleRate = rate;
+                            if (src != micSource) listener.onError("Обраний тип входу недоступний — використано інший");
+                            return r;
+                        }
+                    }
+                    r.release();
+                } catch (Exception e) {
+                    lastError = e.getMessage();
+                }
+            }
+        }
+        listener.onError("Не вдалося відкрити мікрофон" + (lastError != null ? ": " + lastError : ""));
+        return null;
     }
 
     public synchronized void stop() {
@@ -121,7 +154,7 @@ public class AudioEngine {
     }
 
     public synchronized void startRecording(File file) throws IOException {
-        wav = new WavWriter(file, SAMPLE_RATE);
+        wav = new WavWriter(file, getSampleRate());
     }
 
     /** @return length in seconds of the finished recording, or -1 if nothing was recording. */
@@ -140,24 +173,48 @@ public class AudioEngine {
         return w == null ? 0 : w.seconds();
     }
 
+    static float[] buildWindow(WindowType type, int n) {
+        float[] w = new float[n];
+        for (int i = 0; i < n; i++) {
+            double x = 2 * Math.PI * i / (n - 1);
+            double v;
+            switch (type) {
+                case HAMMING: v = 0.54 - 0.46 * Math.cos(x); break;
+                case BLACKMAN_HARRIS:
+                    v = 0.35875 - 0.48829 * Math.cos(x) + 0.14128 * Math.cos(2 * x) - 0.01168 * Math.cos(3 * x);
+                    break;
+                case FLAT_TOP:
+                    v = 0.21557895 - 0.41663158 * Math.cos(x) + 0.277263158 * Math.cos(2 * x)
+                            - 0.083578947 * Math.cos(3 * x) + 0.006947368 * Math.cos(4 * x);
+                    break;
+                case RECTANGULAR: v = 1; break;
+                case HANN:
+                default: v = 0.5 * (1 - Math.cos(x)); break;
+            }
+            w[i] = (float) v;
+        }
+        return w;
+    }
+
     private void loop() {
+        final int rate = actualSampleRate;
         int size = 0;
+        WindowType windowType = null;
         FFT fft = null;
         float[] ring = null, window = null, re = null, im = null, mag = null, smooth = null, peak = null;
-        float windowSum = 1;
+        float windowSum = 1, enbw = 1.5f;
         short[] pcm = new short[HOP];
         float[] block = new float[HOP];
 
-        double phase = 0, sweepT = 0;
-        float pinkB0 = 0, pinkB1 = 0, pinkB2 = 0, pinkB3 = 0, pinkB4 = 0, pinkB5 = 0, pinkB6 = 0;
-
         float[] bassHistory = new float[43];
+        Arrays.fill(bassHistory, MIN_DB);
         int bassIdx = 0;
         long lastBeat = 0;
         long[] intervals = new long[8];
         int intervalCount = 0;
         int bpm = 0;
         boolean micWarned = false;
+        long frameIndex = 0;
 
         while (running) {
             int want = requestedFftSize;
@@ -165,12 +222,6 @@ public class AudioEngine {
                 size = want;
                 fft = new FFT(size);
                 ring = new float[size];
-                window = new float[size];
-                windowSum = 0;
-                for (int i = 0; i < size; i++) {
-                    window[i] = (float) (0.5 * (1 - Math.cos(2 * Math.PI * i / (size - 1))));
-                    windowSum += window[i];
-                }
                 re = new float[size];
                 im = new float[size];
                 mag = new float[size / 2];
@@ -178,18 +229,28 @@ public class AudioEngine {
                 peak = new float[size / 2];
                 Arrays.fill(smooth, MIN_DB);
                 Arrays.fill(peak, MIN_DB);
+                windowType = null;
+            }
+            if (windowType != requestedWindow) {
+                windowType = requestedWindow;
+                window = buildWindow(windowType, size);
+                windowSum = 0;
+                double sq = 0;
+                for (float v : window) { windowSum += v; sq += v * v; }
+                enbw = (float) (size * sq / ((double) windowSum * windowSum));
             }
             int hop = Math.min(HOP, size);
 
             // 1. Acquire one hop of samples.
+            int clipped = 0;
             if (sourceType == SourceType.MIC) {
                 if (record == null) {
                     if (!micWarned) {
-                        listener.onError("Немає доступу до мікрофона — увімкніть генератор або дайте дозвіл");
+                        listener.onError("Немає доступу до мікрофона — оберіть внутрішній генератор або дайте дозвіл");
                         micWarned = true;
                     }
                     Arrays.fill(block, 0, hop, 0f);
-                    sleepMs(hop * 1000L / SAMPLE_RATE);
+                    sleepMs(hop * 1000L / rate);
                 } else {
                     int got = 0;
                     while (got < hop && running) {
@@ -197,46 +258,15 @@ public class AudioEngine {
                         if (r <= 0) break;
                         got += r;
                     }
-                    for (int i = 0; i < hop; i++) block[i] = i < got ? pcm[i] / 32768f : 0f;
+                    for (int i = 0; i < hop; i++) {
+                        short s = i < got ? pcm[i] : 0;
+                        if (s >= 32767 || s <= -32768) clipped++;
+                        block[i] = s / 32768f;
+                    }
                 }
             } else {
-                GenWaveform wf = genWaveform;
-                float vol = genVol;
-                for (int i = 0; i < hop; i++) {
-                    double f = genFreq;
-                    if (wf == GenWaveform.LOG_SWEEP) {
-                        f = 20 * Math.pow(1000, sweepT / 8.0); // 20 Hz -> 20 kHz over 8 s
-                        sweepT += 1.0 / SAMPLE_RATE;
-                        if (sweepT >= 8.0) sweepT = 0;
-                    }
-                    double p = phase / (2 * Math.PI);
-                    float s;
-                    switch (wf) {
-                        case SQUARE: s = p < 0.5 ? 1f : -1f; break;
-                        case SAWTOOTH: s = (float) (2 * p - 1); break;
-                        case TRIANGLE: s = (float) (p < 0.5 ? 4 * p - 1 : 3 - 4 * p); break;
-                        case WHITE_NOISE: s = random.nextFloat() * 2 - 1; break;
-                        case PINK_NOISE: {
-                            float w = random.nextFloat() * 2 - 1;
-                            pinkB0 = 0.99886f * pinkB0 + w * 0.0555179f;
-                            pinkB1 = 0.99332f * pinkB1 + w * 0.0750759f;
-                            pinkB2 = 0.96900f * pinkB2 + w * 0.1538520f;
-                            pinkB3 = 0.86650f * pinkB3 + w * 0.3104856f;
-                            pinkB4 = 0.55000f * pinkB4 + w * 0.5329522f;
-                            pinkB5 = -0.7616f * pinkB5 - w * 0.0168980f;
-                            s = (pinkB0 + pinkB1 + pinkB2 + pinkB3 + pinkB4 + pinkB5 + pinkB6 + w * 0.5362f) * 0.11f;
-                            pinkB6 = w * 0.115926f;
-                            break;
-                        }
-                        case SINE:
-                        case LOG_SWEEP:
-                        default: s = (float) Math.sin(phase); break;
-                    }
-                    block[i] = s * vol;
-                    phase += 2 * Math.PI * f / SAMPLE_RATE;
-                    if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
-                }
-                sleepMs(hop * 1000L / SAMPLE_RATE);
+                generator.fill(block, hop, rate);
+                sleepMs(hop * 1000L / rate);
             }
 
             float g = gainLinear;
@@ -261,18 +291,18 @@ public class AudioEngine {
             fft.forward(re, im);
 
             int bins = size / 2;
-            float binHz = (float) SAMPLE_RATE / size;
+            float binHz = (float) rate / size;
             float norm = 2f / windowSum;
             float a = smoothing;
             float decay = 0.4f * hop / 1024f;
             if (resetPeaks) { Arrays.fill(peak, MIN_DB); resetPeaks = false; }
 
-            int firstBin = Math.max(1, (int) (20 / binHz));
+            int firstBin = Math.max(1, (int) Math.ceil(20 / binHz));
             int maxBin = firstBin;
             for (int i = 0; i < bins; i++) {
                 float m = (float) Math.sqrt(re[i] * re[i] + im[i] * im[i]) * norm;
                 mag[i] = m;
-                float db = m > 1e-6f ? (float) (20 * Math.log10(m)) : MIN_DB;
+                float db = m > 1e-7f ? (float) (20 * Math.log10(m)) : MIN_DB;
                 if (db < MIN_DB) db = MIN_DB;
                 smooth[i] = smooth[i] * a + db * (1 - a);
                 peak[i] = smooth[i] >= peak[i] ? smooth[i] : Math.max(MIN_DB, peak[i] - decay);
@@ -290,86 +320,95 @@ public class AudioEngine {
                 }
             }
 
-            // 4. THD (harmonics 2..5) and SNR (fundamental vs. everything except harmonics).
-            float thd = 0, snr = 0;
+            // 4. THD (harmonics 2..9), THD+N and SNR (fundamental vs. everything except harmonics).
+            float thd = 0, thdN = 0, snr = 0;
             int f0Bin = Math.round(peakFreq / binHz);
-            if (smooth[maxBin] > -90 && peakFreq > 20) {
-                float v1 = localMax(mag, f0Bin, 2);
-                float harmPow = 0;
-                for (int h = 2; h <= 5; h++) {
-                    int hb = Math.round(h * peakFreq / binHz);
-                    if (hb >= bins - 2) break;
-                    float v = localMax(mag, hb, 2);
-                    harmPow += v * v;
-                }
-                if (v1 > 1e-7f) thd = (float) (Math.sqrt(harmPow) / v1 * 100);
-
-                double sig = 0, noise = 0;
+            int lobe = windowType == WindowType.RECTANGULAR ? 2 : windowType == WindowType.HANN || windowType == WindowType.HAMMING ? 3 : 5;
+            if (smooth[maxBin] > -100 && peakFreq > 20) {
+                double sig = 0, harm = 0, noise = 0;
                 for (int i = firstBin; i < bins; i++) {
                     double p = (double) mag[i] * mag[i];
-                    if (Math.abs(i - f0Bin) <= 3) { sig += p; continue; }
+                    if (Math.abs(i - f0Bin) <= lobe) { sig += p; continue; }
                     boolean isHarm = false;
-                    for (int h = 2; h <= 5 && !isHarm; h++) {
-                        if (Math.abs(i - Math.round(h * peakFreq / binHz)) <= 3) isHarm = true;
+                    for (int h = 2; h <= 9 && !isHarm; h++) {
+                        int hb = Math.round(h * peakFreq / binHz);
+                        if (hb >= bins) break;
+                        if (Math.abs(i - hb) <= lobe) isHarm = true;
                     }
-                    if (!isHarm) noise += p;
+                    if (isHarm) harm += p; else noise += p;
                 }
-                if (sig > 0 && noise > 0) snr = (float) (10 * Math.log10(sig / noise));
+                if (sig > 0) {
+                    thd = (float) (Math.sqrt(harm / sig) * 100);
+                    thdN = (float) (Math.sqrt((harm + noise) / sig) * 100);
+                    if (noise > 0) snr = (float) (10 * Math.log10(sig / noise));
+                }
             }
 
             // 5. RMS level of the analysis buffer.
             double sum = 0;
             for (int i = 0; i < size; i++) sum += ring[i] * ring[i];
             double rms = Math.sqrt(sum / size);
-            float rmsDb = rms > 1e-6 ? (float) (20 * Math.log10(rms)) : MIN_DB;
+            float rmsDb = rms > 1e-7 ? (float) (20 * Math.log10(rms)) : MIN_DB;
 
-            // 6. Beat detection on 30-150 Hz energy.
+            // 6. Beat detection: onsets in 30-150 Hz energy, BPM reported only when intervals agree.
             int lo = Math.max(1, (int) (30 / binHz)), hi = Math.max(lo + 1, (int) (150 / binHz));
-            float bass = 0;
-            for (int i = lo; i < hi && i < bins; i++) bass += mag[i] * mag[i];
-            float avg = 0;
-            for (float v : bassHistory) avg += v;
-            avg /= bassHistory.length;
-            bassHistory[bassIdx] = bass;
+            double bass = 0;
+            for (int i = lo; i < hi && i < bins; i++) bass += (double) mag[i] * mag[i];
+            float bassDb = bass > 1e-14 ? (float) (10 * Math.log10(bass)) : MIN_DB;
+            float avgDb = 0;
+            for (float v : bassHistory) avgDb += v;
+            avgDb /= bassHistory.length;
+            bassHistory[bassIdx] = bassDb;
             bassIdx = (bassIdx + 1) % bassHistory.length;
             long now = System.currentTimeMillis();
-            if (bass > avg * 2.0f && bass > 1e-6f && now - lastBeat > 280) {
+            if (bassDb > avgDb + 6 && bassDb > -50 && now - lastBeat > 280) {
                 long dt = now - lastBeat;
                 lastBeat = now;
                 if (dt >= 300 && dt <= 1500) {
                     intervals[intervalCount % intervals.length] = dt;
                     intervalCount++;
                     int n = Math.min(intervalCount, intervals.length);
-                    long[] sorted = Arrays.copyOf(intervals, n);
-                    Arrays.sort(sorted);
-                    bpm = Math.round(60000f / sorted[n / 2]);
+                    if (n >= 4) {
+                        long[] sorted = Arrays.copyOf(intervals, n);
+                        Arrays.sort(sorted);
+                        long median = sorted[n / 2];
+                        long[] dev = new long[n];
+                        for (int i = 0; i < n; i++) dev[i] = Math.abs(sorted[i] - median);
+                        Arrays.sort(dev);
+                        bpm = dev[n / 2] < median * 0.12 ? Math.round(60000f / median) : 0;
+                    }
+                } else {
+                    intervalCount = 0;
                 }
             }
             if (now - lastBeat > 3000) { bpm = 0; intervalCount = 0; }
 
+            float cal = calibrationDb;
             Frame f = new Frame();
             f.fftSize = size;
-            f.sampleRate = SAMPLE_RATE;
+            f.sampleRate = rate;
             f.binHz = binHz;
-            f.spectrumDb = smooth.clone();
-            f.peakHoldDb = peak.clone();
+            f.enbw = enbw;
+            f.calibrationDb = cal;
+            f.spectrumDb = new float[bins];
+            f.peakHoldDb = new float[bins];
+            for (int i = 0; i < bins; i++) {
+                f.spectrumDb[i] = smooth[i] + cal;
+                f.peakHoldDb[i] = peak[i] + cal;
+            }
             f.time = ring.clone();
             f.peakFreqHz = peakFreq;
-            f.peakDb = smooth[maxBin];
+            f.peakDb = smooth[maxBin] + cal;
             f.thd = thd;
+            f.thdN = thdN;
             f.snr = snr;
-            f.rmsDb = rmsDb;
+            f.rmsDb = rmsDb + cal;
+            f.clipPercent = 100f * clipped / hop;
             f.bpm = bpm;
+            f.tonal = snr > 15;
+            f.index = frameIndex++;
             listener.onFrame(f);
         }
-    }
-
-    private static float localMax(float[] m, int center, int radius) {
-        float best = 0;
-        for (int i = Math.max(0, center - radius); i <= Math.min(m.length - 1, center + radius); i++) {
-            if (m[i] > best) best = m[i];
-        }
-        return best;
     }
 
     private static void sleepMs(long ms) {

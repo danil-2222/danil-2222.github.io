@@ -1,0 +1,6 @@
+build/
+deps/
+out/
+assets/
+.gradle/
+src/test/resources/com/android/tools/test_config.properties
