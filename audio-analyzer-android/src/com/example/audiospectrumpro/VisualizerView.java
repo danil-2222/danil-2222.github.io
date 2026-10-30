@@ -26,7 +26,7 @@ import java.util.Locale;
  * pan the frequency axis, double tap resets the zoom, long press toggles full screen.
  */
 public class VisualizerView extends View {
-    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER, PITCH, CHROMA, INTERVALS, AIR, ECHO, SAMPLING }
+    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER, PITCH, CHROMA, INTERVALS, AIR, ECHO, SAMPLING, SONAR }
 
     public interface Callbacks {
         void onToggleFullscreen();
@@ -117,6 +117,7 @@ public class VisualizerView extends View {
     private boolean epiValid;
     private final long animStart = System.currentTimeMillis();
     private LessonRenderer lesson;
+    private SonarRenderer sonar;
     private static final int[] HARM_COLORS = {
             0xFF00F0FF, 0xFFFFE600, 0xFF39FF14, 0xFFFF8800, 0xFFFF007F, 0xFFB388FF,
             0xFF64FFDA, 0xFFFF5252, 0xFF82B1FF, 0xFFFFD180, 0xFFCCFF90, 0xFFEA80FC};
@@ -129,6 +130,7 @@ public class VisualizerView extends View {
         super(context, attrs);
         dp = getResources().getDisplayMetrics().density;
         lesson = new LessonRenderer(dp);
+        sonar = new SonarRenderer(dp);
         grid.setStrokeWidth(1);
         text.setColor(LABEL);
         text.setTextSize(10 * dp);
@@ -260,6 +262,20 @@ public class VisualizerView extends View {
     }
 
     public SoundExplainer.Result getExplanation() { return explanation; }
+
+    public void setSonarFrame(SonarProcessor.Frame f) {
+        int histW = (int) (getWidth() - 34 * dp);
+        int histH = (int) (getHeight() * 0.66f - 46 * dp);
+        sonar.onFrame(f, palette, histW, histH);
+        invalidate();
+    }
+
+    public void setSonarBand(String band) { sonar.setBand(band); }
+
+    public void clearSonar() {
+        sonar.clear();
+        invalidate();
+    }
 
     public void setDbRange(float top, float bottom) {
         dbTop = top;
@@ -464,6 +480,7 @@ public class VisualizerView extends View {
                 break;
             case ECHO: lesson.drawEcho(canvas, getWidth(), getHeight()); break;
             case SAMPLING: lesson.drawSampling(canvas, getWidth(), getHeight()); break;
+            case SONAR: sonar.draw(canvas, getWidth(), getHeight()); break;
         }
         if (f != null && cursorX >= 0 && zoomable()) drawCursor(canvas, f);
         if (zoomable() && (u0 > 0 || u1 < 1)) {
@@ -476,7 +493,7 @@ public class VisualizerView extends View {
             text.setColor(LABEL);
             text.setTextAlign(Paint.Align.LEFT);
         }
-        if (f == null && mode != Mode.INTERVALS && mode != Mode.SAMPLING) {
+        if (f == null && mode != Mode.INTERVALS && mode != Mode.SAMPLING && mode != Mode.SONAR) {
             text.setTextAlign(Paint.Align.CENTER);
             text.setTextSize(14 * dp);
             canvas.drawText("Натисніть «Старт»", getWidth() / 2f, plot.centerY(), text);

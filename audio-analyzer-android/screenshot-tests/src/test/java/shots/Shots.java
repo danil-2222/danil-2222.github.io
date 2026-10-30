@@ -375,4 +375,62 @@ public class Shots {
         run(3500);
         shot(a, "29_echo");
     }
+
+    static SonarFrames sonarFrames(boolean motion, int count) { return new SonarFrames(motion, count); }
+
+    /** Synthetic recording: direct path, a wall at 1.5 m and a hand moving 0.9 m -> 0.35 m -> 0.7 m. */
+    static final class SonarFrames {
+        final java.util.List<Object> frames = new java.util.ArrayList<>();
+        SonarFrames(boolean motion, int count) {
+            int rate = 48000, P = 4800;
+            com.example.audiospectrumpro.SonarProcessor sp =
+                    new com.example.audiospectrumpro.SonarProcessor(rate, 18000, 22000, 10, P, 3f);
+            float[] ping = sp.pingBuffer(0.8f);
+            java.util.Random r = new java.util.Random(5);
+            float[] buf = new float[2 * P];
+            for (int n = 0; n < count; n++) {
+                float tt = (float) n / count;
+                float hand = tt < 0.5f ? 0.9f - tt * 1.1f : 0.35f + (tt - 0.5f) * 0.7f;
+                float[] fresh = new float[P];
+                int handDelay = Math.round(2 * hand / 343f * rate), wall = Math.round(2 * 1.5f / 343f * rate);
+                for (int i = 0; i < P; i++) {
+                    float v = 0.5f * ping[(i - 500 + P) % P];
+                    v += 0.015f * ping[(i - 500 - wall + 2 * P) % P];
+                    v += 0.006f * ping[(i - 500 - handDelay + 2 * P) % P];
+                    v += 0.004f * ping[(i - 500 - Math.round(2 * 2.4f / 343f * rate) + 3 * P) % P];
+                    v += (float) r.nextGaussian() * 0.002f;
+                    fresh[i] = v;
+                }
+                System.arraycopy(buf, P, buf, 0, P);
+                System.arraycopy(fresh, 0, buf, P, P);
+                if (n > 0) frames.add(sp.process(buf, motion));
+            }
+        }
+    }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void sonar() throws Exception {
+        MainActivity a = setup();
+        click(a, "tabSonar");
+        click(a, "btnSonar"); // exercise the real start/stop path (shadow audio)
+        run(500);
+        click(a, "btnSonar");
+        run(300);
+        int vid = a.getResources().getIdentifier("visualizer2D", "id", a.getPackageName());
+        Object viz = a.findViewById(vid);
+        Class<?> modeCls = Class.forName("com.example.audiospectrumpro.VisualizerView$Mode");
+        call(viz, "setMode", new Class<?>[]{modeCls}, Enum.valueOf((Class) modeCls, "SONAR"));
+        call(viz, "setSonarBand", new Class<?>[]{String.class}, "Ультразвук 18–22 кГц");
+        for (Object f : sonarFrames(false, 120).frames) {
+            call(viz, "setSonarFrame", new Class<?>[]{com.example.audiospectrumpro.SonarProcessor.Frame.class}, f);
+        }
+        run(200);
+        shot(a, "30_sonar_static");
+        call(viz, "clearSonar", new Class<?>[]{});
+        for (Object f : sonarFrames(true, 120).frames) {
+            call(viz, "setSonarFrame", new Class<?>[]{com.example.audiospectrumpro.SonarProcessor.Frame.class}, f);
+        }
+        run(200);
+        shot(a, "31_sonar_motion");
+    }
 }

@@ -26,7 +26,8 @@ import java.io.File;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class MainActivity extends Activity implements AudioEngine.Listener, VisualizerView.Callbacks {
+public class MainActivity extends Activity implements AudioEngine.Listener, VisualizerView.Callbacks,
+        SonarEngine.Listener {
     private static final int REQ_MIC = 200;
     private static final int REQ_OPEN = 201;
     private static final float[] SPEEDS = {1f, 0.5f, 0.25f};
@@ -147,6 +148,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         setupChecks();
         setupTimeline();
         setupLearning();
+        setupSonar();
         applyOrientation(getResources().getConfiguration());
         ready = true;
     }
@@ -196,9 +198,10 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
 
     private void setupTabs() {
         panels = new View[]{findViewById(R.id.panelMain), findViewById(R.id.panelDisplay),
-                findViewById(R.id.panelAnalysis), findViewById(R.id.panelGen), findViewById(R.id.panelLearn)};
+                findViewById(R.id.panelAnalysis), findViewById(R.id.panelGen), findViewById(R.id.panelLearn),
+                findViewById(R.id.panelSonar)};
         tabs = new TextView[]{text(R.id.tabMain), text(R.id.tabDisplay), text(R.id.tabAnalysis), text(R.id.tabGen),
-                text(R.id.tabLearn)};
+                text(R.id.tabLearn), text(R.id.tabSonar)};
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;
             tabs[i].setOnClickListener(new View.OnClickListener() {
@@ -300,6 +303,13 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         }, new OnPick() {
             @Override public void pick(int i) {
                 mode = i;
+                if (ready && sonar.isRunning()) sonar.stop();
+                if (ready) {
+                    btnSonar.setText("▶ Увімкнути ехолот");
+                    findViewById(R.id.hud).setVisibility(View.VISIBLE);
+                    viz2d.clearSonar();
+                    if (resumeOnStart && !engine.isRunning() && currentTape == null) startEngine();
+                }
                 if (i == MODE_3D) {
                     viz2d.setVisibility(View.GONE);
                     viz3d.setVisibility(View.VISIBLE);
@@ -533,6 +543,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     }
 
     private void startEngine() {
+        if (sonar.isRunning()) return;
         if (!hasMic()) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
             return;
@@ -578,7 +589,10 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     protected void onResume() {
         super.onResume();
         viz3d.onResume();
-        if (currentTape != null) {
+        if (sonarWasOn) {
+            sonarWasOn = false;
+            startSonar();
+        } else if (currentTape != null) {
             ensureEngine();
             engine.openTape(currentTape, savedPlayhead);
         } else if (resumeOnStart && !engine.isRunning()) {
@@ -590,6 +604,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     @Override
     protected void onPause() {
         super.onPause();
+        if (sonar.isRunning()) stopSonar(false);
         viz3d.onPause();
         player.stop();
         if (currentTape != null) savedPlayhead = engine.getPlayhead();
@@ -662,6 +677,131 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             if (!seekDragging) seekTape.setProgress(f.tapePosition / AudioEngine.HOP);
             btnTapePlay.setText(f.tapePlaying ? "❚❚" : "▶");
         }
+    }
+
+    // ---------------------------------------------------------------- sonar
+
+    private static final float[][] SONAR_BANDS = {{18000, 22000}, {14000, 18000}, {2000, 8000}};
+    private static final String[] SONAR_BAND_NAMES = {"Ультразвук 18–22 кГц (майже нечутно)",
+            "Високий 14–18 кГц (тихий писк)", "Чутний 2–8 кГц (найнадійніше)"};
+    private static final float[] SONAR_RANGES = {1, 2, 3, 5, 10};
+    private final SonarEngine sonar = new SonarEngine(this);
+    private boolean sonarWasOn;
+    private int sonarBand, sonarRange = 2;
+    private Button btnSonar;
+    private TextView txtSonarStatus;
+    private long lastSonarStatus;
+
+    private void setupSonar() {
+        btnSonar = (Button) findViewById(R.id.btnSonar);
+        txtSonarStatus = text(R.id.txtSonarStatus);
+        btnSonar.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (sonar.isRunning()) stopSonar(true); else startSonar();
+            }
+        });
+        spinner(R.id.spinSonarBand, "sonarBand", 0, SONAR_BAND_NAMES, new OnPick() {
+            @Override public void pick(int i) {
+                sonarBand = i;
+                restartSonar();
+            }
+        });
+        String[] ranges = new String[SONAR_RANGES.length];
+        for (int i = 0; i < ranges.length; i++) ranges[i] = String.format(Locale.US, "до %.0f м", SONAR_RANGES[i]);
+        spinner(R.id.spinSonarRange, "sonarRange", 2, ranges, new OnPick() {
+            @Override public void pick(int i) {
+                sonarRange = i;
+                restartSonar();
+            }
+        });
+        check(R.id.chkSonarMotion, "sonarMotion", false, new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean on) {
+                sonar.setMotion(on);
+                viz2d.clearSonar();
+            }
+        });
+        final TextView lbl = text(R.id.lblSonarLevel);
+        slider(R.id.seekSonarLevel, "sonarLevel", 100, 70, new OnPick() {
+            @Override public void pick(int p) {
+                sonar.setLevel(Math.max(0.05f, p / 100f));
+                lbl.setText("Гучність імпульсів: " + p + " %");
+            }
+        });
+    }
+
+    private void restartSonar() {
+        if (!ready || !sonar.isRunning()) return;
+        sonar.stop();
+        viz2d.clearSonar();
+        startSonar();
+    }
+
+    private void startSonar() {
+        if (!hasMic()) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        // The sonar needs the microphone and the speaker for itself.
+        if (currentTape != null) closeTape();
+        if (engine.isRunning()) stopEngine();
+        chkPlay.setChecked(false);
+        player.stop();
+        viz3d.setVisibility(View.GONE);
+        viz2d.setVisibility(View.VISIBLE);
+        viz2d.setMode(VisualizerView.Mode.SONAR);
+        findViewById(R.id.hud).setVisibility(View.GONE);
+        viz2d.setSonarBand(SONAR_BAND_NAMES[sonarBand].split(" \\(")[0]);
+        float[] band = SONAR_BANDS[sonarBand];
+        sonar.setMotion(((CheckBox) findViewById(R.id.chkSonarMotion)).isChecked());
+        sonar.start(band[0], band[1], SONAR_RANGES[sonarRange], AudioEngine.SOURCE_UNPROCESSED);
+        btnSonar.setText(sonar.isRunning() ? "■ Вимкнути ехолот" : "▶ Увімкнути ехолот");
+        if (sonar.isRunning()) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    /** @param byUser false when paused by the system: the sonar resumes with the app. */
+    private void stopSonar(boolean byUser) {
+        sonar.stop();
+        sonarWasOn = !byUser;
+        btnSonar.setText("▶ Увімкнути ехолот");
+        txtSonarStatus.setText("");
+        if (!byUser) return;
+        findViewById(R.id.hud).setVisibility(View.VISIBLE);
+        viz2d.clearSonar();
+        Spinner m = (Spinner) findViewById(R.id.spinMode);
+        int i = m.getSelectedItemPosition();
+        if (i == MODE_3D) {
+            viz2d.setVisibility(View.GONE);
+            viz3d.setVisibility(View.VISIBLE);
+        } else {
+            viz2d.setMode(MODES_2D[i]);
+        }
+        if (resumeOnStart) startEngine();
+    }
+
+    @Override
+    public void onSonar(final SonarProcessor.Frame frame) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (!sonar.isRunning()) return;
+                viz2d.setSonarFrame(frame);
+                long now = System.currentTimeMillis();
+                if (now - lastSonarStatus > 400) {
+                    lastSonarStatus = now;
+                    txtSonarStatus.setText(String.format(Locale.US, "Якість сигналу: %.0f дБ%s", frame.directSnrDb,
+                            frame.directSnrDb < 25 ? " — слабко, спробуйте інший діапазон" : " — добре"));
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onSonarError(final String message) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                toast(message);
+                btnSonar.setText(sonar.isRunning() ? "■ Вимкнути ехолот" : "▶ Увімкнути ехолот");
+            }
+        });
     }
 
     // ---------------------------------------------------------------- learning

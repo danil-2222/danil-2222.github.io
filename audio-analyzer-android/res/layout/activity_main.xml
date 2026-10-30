@@ -113,6 +113,7 @@
         <TextView android:id="@+id/tabAnalysis" style="@style/Tab" android:text="Аналіз" />
         <TextView android:id="@+id/tabGen" style="@style/Tab" android:text="Генератор" />
         <TextView android:id="@+id/tabLearn" style="@style/Tab" android:text="Навчання" />
+        <TextView android:id="@+id/tabSonar" style="@style/Tab" android:text="Ехолот" />
         </LinearLayout>
         <ScrollView
             android:id="@+id/controlsScroll"
@@ -283,6 +284,25 @@
                 <SeekBar android:id="@+id/seekH11" style="@style/HarmSlider" />
                 <TextView android:id="@+id/lblH12" style="@style/HarmLabel" />
                 <SeekBar android:id="@+id/seekH12" style="@style/HarmSlider" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/panelSonar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+                <Button android:id="@+id/btnSonar" style="@style/Btn" android:layout_width="match_parent" android:text="▶ Увімкнути ехолот" android:textColor="#00F0FF" />
+                <TextView android:id="@+id/txtSonarStatus" style="@style/Hint" android:text="" />
+                <TextView style="@style/Label" android:text="Частота імпульсів" />
+                <Spinner android:id="@+id/spinSonarBand" style="@style/Picker" />
+                <TextView style="@style/Label" android:text="Дальність" />
+                <Spinner android:id="@+id/spinSonarRange" style="@style/Picker" />
+                <CheckBox android:id="@+id/chkSonarMotion" style="@style/Check" android:text="Показувати лише рух (віднімати нерухомий фон)" />
+                <TextView android:id="@+id/lblSonarLevel" style="@style/Label" android:text="Гучність імпульсів" />
+                <SeekBar android:id="@+id/seekSonarLevel" style="@style/Slider" />
+                <TextView style="@style/Lesson" android:text="Як це працює: динамік 10 разів на секунду посилає короткий «свіп», мікрофон ловить його відлуння. Чим далі предмет, тим пізніше повертається звук: відстань = 343 м/с × час ÷ 2 (туди й назад).&#10;&#10;Як користуватися: покладіть телефон екраном догори або спрямуйте низом (там динамік і мікрофон) на стіну чи шафу. Поводіть рукою над телефоном у режимі «лише рух» — побачите, як лінія наближається й віддаляється.&#10;&#10;Ближче ~15–20 см ехолот «сліпий»: там ще звучить сам імпульс. Відстань рахується до найближчого чіткого відлуння." />
+                <TextView style="@style/Hint" android:text="Ультразвук 18–22 кГц більшість дорослих не чує, але діти й підлітки можуть чути тихий писк, а собаки й коти чують точно — не вмикайте надовго поруч із тваринами. Не всі телефони добре відтворюють ультразвук: якщо сигнал слабкий, оберіть «Високий» або «Чутний»." />
             </LinearLayout>
             </FrameLayout>
         </ScrollView>
