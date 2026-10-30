@@ -26,7 +26,7 @@ import java.util.Locale;
  * pan the frequency axis, double tap resets the zoom, long press toggles full screen.
  */
 public class VisualizerView extends View {
-    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER }
+    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER }
 
     public interface Callbacks {
         void onToggleFullscreen();
@@ -107,6 +107,18 @@ public class VisualizerView extends View {
     private boolean cursorRemovePending;
     private float scopeScale = 1f;
     private float tunerCents;
+
+    // Learning mode: plain-language description and Fourier epicycles.
+    private boolean showHints;
+    private SoundExplainer.Result explanation;
+    private static final int EPI_K = 12;
+    private final float[] epiRe = new float[EPI_K + 1], epiIm = new float[EPI_K + 1];
+    private float epiF0;
+    private boolean epiValid;
+    private final long animStart = System.currentTimeMillis();
+    private static final int[] HARM_COLORS = {
+            0xFF00F0FF, 0xFFFFE600, 0xFF39FF14, 0xFFFF8800, 0xFFFF007F, 0xFFB388FF,
+            0xFF64FFDA, 0xFFFF5252, 0xFF82B1FF, 0xFFFFD180, 0xFFCCFF90, 0xFFEA80FC};
     private float lastFocusX;
 
     private final ScaleGestureDetector scaleDetector;
@@ -239,6 +251,14 @@ public class VisualizerView extends View {
 
     public void setShowPeakLabels(boolean show) { showPeakLabels = show; invalidate(); }
 
+    public void setShowHints(boolean show) {
+        showHints = show;
+        if (!show) explanation = null;
+        invalidate();
+    }
+
+    public SoundExplainer.Result getExplanation() { return explanation; }
+
     public void setDbRange(float top, float bottom) {
         dbTop = top;
         dbBottom = bottom;
@@ -279,6 +299,8 @@ public class VisualizerView extends View {
         }
         lastFrameIndex = f.index;
         if (mode == Mode.RTA) computeRta(f);
+        if (showHints || mode == Mode.FOURIER) explanation = SoundExplainer.explain(f, a4);
+        if (mode == Mode.FOURIER) computeEpicycles(f);
         if (mode == Mode.TUNER && f.peakFreqHz > 25) {
             float[] cents = new float[1];
             SpectrumMath.noteName(f.peakFreqHz, a4, cents);
@@ -417,12 +439,13 @@ public class VisualizerView extends View {
         canvas.drawColor(BG);
         AudioEngine.Frame f = frame;
         switch (mode) {
-            case LINE: drawFreqGrid(canvas, true); if (f != null) drawLine(canvas, f); drawDbLabels(canvas); break;
-            case BARS: drawFreqGrid(canvas, true); if (f != null) drawBars(canvas, f); drawDbLabels(canvas); break;
+            case LINE: drawFreqGrid(canvas, true); if (f != null) drawLine(canvas, f); drawDbLabels(canvas); drawHints(canvas, f); break;
+            case BARS: drawFreqGrid(canvas, true); if (f != null) drawBars(canvas, f); drawDbLabels(canvas); drawHints(canvas, f); break;
             case RTA: drawRta(canvas, f); break;
             case WATERFALL: drawWaterfall(canvas); break;
             case OSCILLOSCOPE: drawScope(canvas, f); break;
             case TUNER: drawTuner(canvas, f); break;
+            case FOURIER: drawFourier(canvas, f); break;
         }
         if (f != null && cursorX >= 0 && zoomable()) drawCursor(canvas, f);
         if (zoomable() && (u0 > 0 || u1 < 1)) {
@@ -651,7 +674,7 @@ public class VisualizerView extends View {
     private final float[] peakLevels = new float[3];
 
     private void drawPeakLabels(Canvas c, AudioEngine.Frame f) {
-        if (!showPeakLabels) return;
+        if (!showPeakLabels || showHints) return;
         int n = findPeaks(f, peakFreqs, peakLevels);
         text.setTextSize(11 * dp);
         for (int k = n - 1; k >= 0; k--) {
@@ -931,6 +954,219 @@ public class VisualizerView extends View {
         text.setColor(LABEL);
         c.drawText(String.format(Locale.US, "A4 = %.0f Hz", a4), cx, h - 6 * dp, text);
         text.setTextAlign(Paint.Align.LEFT);
+    }
+
+    // ---------------------------------------------------------------- learning mode
+
+    /** Harmonic markers on the spectrum plus a card that explains the sound in words. */
+    private void drawHints(Canvas c, AudioEngine.Frame f) {
+        SoundExplainer.Result r = explanation;
+        if (!showHints || f == null || r == null) return;
+        if (r.f0 > 0 && (r.kind == SoundExplainer.Kind.HARMONIC || r.kind == SoundExplainer.Kind.PURE_TONE)) {
+            text.setTextSize(10 * dp);
+            text.setTextAlign(Paint.Align.CENTER);
+            for (int k = 1; k <= SoundExplainer.MAX_HARMONICS; k++) {
+                float v = r.harmonicDb[k - 1];
+                if (Float.isNaN(v)) continue;
+                float hz = r.harmonicHz[k - 1];
+                if (hz < lo || hz > hi) continue;
+                float x = xOf(hz), y = yOf(v);
+                int col = HARM_COLORS[(k - 1) % HARM_COLORS.length];
+                fill.setColor(col);
+                path.reset();
+                path.moveTo(x, y - 4 * dp);
+                path.lineTo(x - 4 * dp, y - 11 * dp);
+                path.lineTo(x + 4 * dp, y - 11 * dp);
+                path.close();
+                c.drawPath(path, fill);
+                text.setColor(col);
+                c.drawText(k == 1 ? "f0" : k + "×", x, y - 14 * dp, text);
+            }
+            text.setTextAlign(Paint.Align.LEFT);
+        }
+        drawCard(c, r, plot.bottom - 6 * dp, true);
+    }
+
+    /** Draws the explanation card; anchorBottom = y of its bottom (or top if !fromBottom). */
+    private void drawCard(Canvas c, SoundExplainer.Result r, float anchor, boolean fromBottom) {
+        float pad = 8 * dp, maxW = Math.min(getWidth() - 16 * dp, 520 * dp);
+        Paint title = new Paint(text);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextSize(13 * dp);
+        title.setColor(Color.parseColor("#00F0FF"));
+        text.setTextSize(11.5f * dp);
+        java.util.List<String> rows = new java.util.ArrayList<>();
+        for (String line : r.lines) rows.addAll(wrap(line, text, maxW - 2 * pad));
+        float lineH = 15 * dp, titleH = 18 * dp;
+        float h = pad * 2 + titleH + rows.size() * lineH;
+        float top = fromBottom ? anchor - h : anchor;
+        float left = 8 * dp;
+        fill.setColor(Color.argb(225, 10, 16, 30));
+        c.drawRoundRect(new RectF(left, top, left + maxW, top + h), 8 * dp, 8 * dp, fill);
+        stroke.setColor(Color.argb(120, 0, 240, 255));
+        stroke.setStrokeWidth(1 * dp);
+        c.drawRoundRect(new RectF(left, top, left + maxW, top + h), 8 * dp, 8 * dp, stroke);
+        c.drawText(r.title, left + pad, top + pad + 13 * dp, title);
+        text.setColor(Color.parseColor("#CBD5E1"));
+        float y = top + pad + titleH + 11 * dp;
+        for (String row : rows) {
+            c.drawText(row, left + pad, y, text);
+            y += lineH;
+        }
+        text.setColor(LABEL);
+        text.setTextSize(10 * dp);
+    }
+
+    private static java.util.List<String> wrap(String s, Paint p, float width) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : s.split(" ")) {
+            String cand = line.length() == 0 ? word : line + " " + word;
+            if (p.measureText(cand) > width && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(cand);
+            }
+        }
+        if (line.length() > 0) out.add(line.toString());
+        return out;
+    }
+
+    /** Fourier series of the latest full period of the waveform, smoothed between frames. */
+    private void computeEpicycles(AudioEngine.Frame f) {
+        SoundExplainer.Result r = explanation;
+        float f0 = r != null && r.f0 > 0 ? r.f0 : 0;
+        float[] t = f.time;
+        float period = f0 > 0 ? f.sampleRate / f0 : 0;
+        if (f0 <= 0 || period * 2 > t.length || period < 4) {
+            epiValid = false;
+            return;
+        }
+        // Rising zero crossing that leaves one whole period after it.
+        int start = -1;
+        for (int i = (int) (t.length - period - 1); i > 0; i--) {
+            if (t[i - 1] < 0 && t[i] >= 0) { start = i; break; }
+        }
+        if (start < 0) { epiValid = false; return; }
+        final int m = 256;
+        float[] x = new float[m];
+        float peak = 1e-6f;
+        for (int j = 0; j < m; j++) {
+            float pos = start + j * period / m;
+            int i0 = (int) pos;
+            float fr = pos - i0;
+            x[j] = t[i0] + (t[Math.min(t.length - 1, i0 + 1)] - t[i0]) * fr;
+            peak = Math.max(peak, Math.abs(x[j]));
+        }
+        float a = Math.abs(f0 - epiF0) / Math.max(1, f0) > 0.03f || !epiValid ? 0f : 0.6f;
+        for (int k = 1; k <= EPI_K; k++) {
+            double re = 0, im = 0;
+            for (int j = 0; j < m; j++) {
+                double ang = 2 * Math.PI * k * j / m;
+                re += x[j] * Math.cos(ang);
+                im -= x[j] * Math.sin(ang);
+            }
+            float cr = (float) (2 * re / m / peak), ci = (float) (2 * im / m / peak);
+            epiRe[k] = epiRe[k] * a + cr * (1 - a);
+            epiIm[k] = epiIm[k] * a + ci * (1 - a);
+        }
+        epiF0 = f0;
+        epiValid = true;
+    }
+
+    private void drawFourier(Canvas c, AudioEngine.Frame f) {
+        float w = getWidth(), h = getHeight();
+        text.setTextAlign(Paint.Align.LEFT);
+        if (!epiValid) {
+            grid.setColor(GRID);
+            c.drawLine(0, h / 2, w, h / 2, grid);
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setTextSize(14 * dp);
+            text.setColor(Color.WHITE);
+            c.drawText("Кола працюють для звуків з висотою", w / 2, h * 0.42f, text);
+            text.setTextSize(12 * dp);
+            text.setColor(LABEL);
+            c.drawText("Свисніть, заспівайте «а-а-а» або увімкніть генератор", w / 2, h * 0.42f + 22 * dp, text);
+            text.setTextSize(10 * dp);
+            text.setTextAlign(Paint.Align.LEFT);
+            if (f != null) postInvalidateDelayed(100);
+            return;
+        }
+        float cy = h * 0.42f;
+        float cx = w * 0.24f;
+        float waveX = w * 0.5f;
+        double sum = 0;
+        for (int k = 1; k <= EPI_K; k++) sum += Math.hypot(epiRe[k], epiIm[k]);
+        float scale = (float) (Math.min(h * 0.34f, w * 0.22f) / Math.max(0.3, sum));
+        // Slow, steady rotation so the eye can follow it (independent of the real pitch).
+        double theta = 2 * Math.PI * ((System.currentTimeMillis() - animStart) / 1000.0 * 0.3);
+
+        grid.setColor(GRID);
+        c.drawLine(waveX, cy, w, cy, grid);
+        float px = cx, py = cy;
+        for (int k = 1; k <= EPI_K; k++) {
+            float amp = (float) Math.hypot(epiRe[k], epiIm[k]) * scale;
+            if (amp < 0.6f * dp) continue;
+            double ang = k * theta + Math.atan2(epiIm[k], epiRe[k]);
+            float nx = px - (float) Math.sin(ang) * amp;
+            float ny = py - (float) Math.cos(ang) * amp;
+            int col = HARM_COLORS[(k - 1) % HARM_COLORS.length];
+            stroke.setColor(withAlpha(col, 90));
+            stroke.setStrokeWidth(1 * dp);
+            c.drawCircle(px, py, amp, stroke);
+            stroke.setColor(col);
+            stroke.setStrokeWidth(2 * dp);
+            c.drawLine(px, py, nx, ny, stroke);
+            px = nx;
+            py = ny;
+        }
+        // Tip -> connector -> waveform drawn from the same sum, scrolling to the right.
+        stroke.setColor(Color.argb(160, 255, 255, 255));
+        stroke.setStrokeWidth(1 * dp);
+        c.drawLine(px, py, waveX, py, stroke);
+        fill.setColor(Color.WHITE);
+        c.drawCircle(px, py, 3.5f * dp, fill);
+        c.drawCircle(waveX, py, 3.5f * dp, fill);
+        path.reset();
+        float span = w - waveX;
+        for (int i = 0; i <= (int) span; i += 2) {
+            double th = theta - (i / span) * 2 * Math.PI * 2; // two periods across
+            float y = 0;
+            for (int k = 1; k <= EPI_K; k++) {
+                y += (float) Math.hypot(epiRe[k], epiIm[k]) * (float) Math.cos(k * th + Math.atan2(epiIm[k], epiRe[k]));
+            }
+            float yy = cy - y * scale;
+            if (i == 0) path.moveTo(waveX, yy); else path.lineTo(waveX + i, yy);
+        }
+        stroke.setColor(Palettes.accent(palette));
+        stroke.setStrokeWidth(2 * dp);
+        c.drawPath(path, stroke);
+
+        // Legend: which circle is which frequency.
+        text.setTextSize(11 * dp);
+        float ly = h * 0.80f;
+        float colW = w / 4f;
+        int shown = 0;
+        for (int k = 1; k <= EPI_K && shown < 8; k++) {
+            float rel = (float) (Math.hypot(epiRe[k], epiIm[k]) / Math.max(1e-6, Math.hypot(epiRe[1], epiIm[1])));
+            if (rel < 0.02f && k > 1) continue;
+            int col = HARM_COLORS[(k - 1) % HARM_COLORS.length];
+            float lx = 8 * dp + (shown % 4) * colW, yy = ly + (shown / 4) * 16 * dp;
+            fill.setColor(col);
+            c.drawCircle(lx + 4 * dp, yy - 4 * dp, 4 * dp, fill);
+            text.setColor(Color.parseColor("#CBD5E1"));
+            c.drawText(String.format(Locale.US, "%d× %s", k, SpectrumMath.tickLabel(Math.round(k * epiF0))), lx + 11 * dp, yy, text);
+            shown++;
+        }
+        text.setTextSize(12 * dp);
+        text.setColor(Color.WHITE);
+        c.drawText("Кожне коло — одна гармоніка (k × f0). Їх сума малює хвилю праворуч.", 8 * dp, 16 * dp, text);
+        text.setTextSize(10 * dp);
+        text.setColor(LABEL);
+        c.drawText(String.format(Locale.US, "f0 = %s · обертання сповільнено для наочності", SpectrumMath.formatHz(epiF0)),
+                8 * dp, 30 * dp, text);
+        postInvalidateOnAnimation();
     }
 
     private static int withAlpha(int color, int alpha) {

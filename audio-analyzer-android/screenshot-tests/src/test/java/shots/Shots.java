@@ -253,4 +253,34 @@ public class Shots {
         f.setAccessible(true);
         return f.get(o);
     }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void learning() throws Exception {
+        MainActivity a = setup();
+        click(a, "tabLearn");
+        click(a, "btnExp3");
+        run(2500);
+        shot(a, "15_fourier_saw");
+
+        click(a, "btnPresetSquare");
+        run(2000);
+        shot(a, "16_fourier_square");
+
+        click(a, "btnExp4");
+        run(2000);
+        shot(a, "17_hints_square");
+
+        click(a, "btnPresetVoice");
+        run(2000);
+        shot(a, "18_hints_voice");
+
+        click(a, "btnPresetSine");
+        run(2000);
+        shot(a, "19_hints_sine");
+
+        select(a, "spinMode", 0);
+        gen("PINK_NOISE", 440, 0.5f);
+        run(2000);
+        shot(a, "20_hints_noise");
+    }
 }

@@ -51,7 +51,7 @@
         <item name="android:layout_weight">1</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:gravity">center</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">12sp</item>
         <item name="android:textColor">#7F93A8</item>
         <item name="android:maxLines">1</item>
         <item name="android:background">?android:attr/selectableItemBackground</item>
@@ -74,5 +74,36 @@
         <item name="android:textAllCaps">false</item>
         <item name="android:backgroundTint">#1E293B</item>
         <item name="android:textColor">#E2E8F0</item>
+    </style>
+    <style name="Lesson">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:background">#14213A</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:textColor">#E2E8F0</item>
+    </style>
+    <style name="ExpBtn">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:gravity">start|center_vertical</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:backgroundTint">#1E293B</item>
+        <item name="android:textColor">#E2E8F0</item>
+    </style>
+    <style name="HarmLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#7F93A8</item>
+    </style>
+    <style name="HarmSlider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">28dp</item>
     </style>
 </resources>

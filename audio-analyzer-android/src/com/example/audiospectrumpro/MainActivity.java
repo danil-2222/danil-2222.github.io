@@ -40,7 +40,17 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private static final float[][] DB_RANGES = {{0, -120}, {0, -100}, {-20, -120}, {-30, -90}, {0, -60}, {10, -140}};
     private static final VisualizerView.Mode[] MODES_2D = {
             VisualizerView.Mode.LINE, VisualizerView.Mode.BARS, VisualizerView.Mode.RTA,
-            VisualizerView.Mode.WATERFALL, null, VisualizerView.Mode.OSCILLOSCOPE, VisualizerView.Mode.TUNER
+            VisualizerView.Mode.WATERFALL, null, VisualizerView.Mode.OSCILLOSCOPE, VisualizerView.Mode.TUNER,
+            VisualizerView.Mode.FOURIER
+    };
+    private static final int MODE_FOURIER = 7, WAVE_HARMONICS = 8;
+    private static final float[][] PRESETS = {
+            {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},                                          // sine
+            {1, .5f, .33f, .25f, .2f, .17f, .14f, .125f, .11f, .1f, .09f, .083f},           // saw
+            {1, 0, .33f, 0, .2f, 0, .14f, 0, .11f, 0, .09f, 0},                             // square
+            {1, .02f, .75f, .02f, .5f, .02f, .14f, .02f, .1f, .02f, .05f, 0},              // clarinet
+            {1, .8f, 0, .6f, 0, 0, 0, .4f, 0, 0, 0, .2f},                                  // organ (octave stops)
+            {.5f, .8f, 1, .7f, .4f, .3f, .5f, .6f, .3f, .1f, .05f, .05f},                  // sung "a"
     };
     private static final int ACCENT = 0xFF00F0FF;
     private static final int MUTED = 0xFF7F93A8;
@@ -128,6 +138,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         setupSliders();
         setupChecks();
         setupTimeline();
+        setupLearning();
         applyOrientation(getResources().getConfiguration());
         ready = true;
     }
@@ -177,8 +188,9 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
 
     private void setupTabs() {
         panels = new View[]{findViewById(R.id.panelMain), findViewById(R.id.panelDisplay),
-                findViewById(R.id.panelAnalysis), findViewById(R.id.panelGen)};
-        tabs = new TextView[]{text(R.id.tabMain), text(R.id.tabDisplay), text(R.id.tabAnalysis), text(R.id.tabGen)};
+                findViewById(R.id.panelAnalysis), findViewById(R.id.panelGen), findViewById(R.id.panelLearn)};
+        tabs = new TextView[]{text(R.id.tabMain), text(R.id.tabDisplay), text(R.id.tabAnalysis), text(R.id.tabGen),
+                text(R.id.tabLearn)};
         for (int i = 0; i < tabs.length; i++) {
             final int idx = i;
             tabs[i].setOnClickListener(new View.OnClickListener() {
@@ -274,7 +286,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         refreshFftLabels(RATES[Math.max(0, Math.min(RATES.length - 1, prefs.getInt("rate", 0)))]);
         spinner(R.id.spinMode, "mode", 0, new String[]{
                 "Спектр (лінія)", "Спектр (стовпчики)", "1/3 октави (RTA)", "Спектрограма (водоспад)",
-                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер"
+                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер", "Фур'є: кола (навчання)"
         }, new OnPick() {
             @Override public void pick(int i) {
                 mode = i;
@@ -347,7 +359,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         });
         spinner(R.id.spinWave, "wave", 0, new String[]{
                 "Синус", "Меандр", "Пилка", "Трикутник", "Білий шум", "Рожевий шум",
-                "Лог. свіп 20 Гц – 20 кГц (8 с)", "Два тони: f + 7 кГц (IMD)"
+                "Лог. свіп 20 Гц – 20 кГц (8 с)", "Два тони: f + 7 кГц (IMD)", "Конструктор гармонік (вкладка «Навчання»)"
         }, new OnPick() {
             @Override public void pick(int i) { SignalGenerator.waveform = SignalGenerator.Waveform.values()[i]; }
         });
@@ -638,6 +650,179 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                     + " / " + VisualizerView.formatTime(f.tape.seconds()));
             if (!seekDragging) seekTape.setProgress(f.tapePosition / AudioEngine.HOP);
             btnTapePlay.setText(f.tapePlaying ? "❚❚" : "▶");
+        }
+    }
+
+    // ---------------------------------------------------------------- learning
+
+    private SeekBar[] harmSliders;
+    private TextView[] harmLabels;
+    private TextView lblHarmF0, txtLesson;
+
+    private void setupLearning() {
+        txtLesson = text(R.id.txtLesson);
+        check(R.id.chkHints, "hints", true, new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean on) { viz2d.setShowHints(on); }
+        });
+        lblHarmF0 = text(R.id.lblHarmF0);
+        slider(R.id.seekHarmF0, "harmF0", 1000, 500, new OnPick() {
+            @Override public void pick(int p) {
+                float f = (float) (55 * Math.pow(16, p / 1000.0)); // 55 Hz .. 880 Hz
+                for (float snap : new float[]{110, 220, 440}) if (Math.abs(f / snap - 1) < 0.015f) f = snap;
+                harmF0 = f;
+                if (ready) {
+                    useHarmonics();
+                    SignalGenerator.frequency = f;
+                }
+                float[] cents = new float[1];
+                lblHarmF0.setText(String.format(Locale.US, "Основна частота f0: %s (%s)",
+                        SpectrumMath.formatHz(f), SpectrumMath.noteName(f, a4, cents)));
+                refreshHarmLabels();
+            }
+        });
+        harmSliders = new SeekBar[12];
+        harmLabels = new TextView[12];
+        for (int k = 1; k <= 12; k++) {
+            final int idx = k - 1;
+            harmLabels[idx] = text(getResources().getIdentifier("lblH" + k, "id", getPackageName()));
+            harmSliders[idx] = (SeekBar) findViewById(getResources().getIdentifier("seekH" + k, "id", getPackageName()));
+            slider(harmSliders[idx].getId(), "harm" + k, 100, k == 1 ? 100 : 0, new OnPick() {
+                @Override public void pick(int p) {
+                    SignalGenerator.harmonics[idx] = p / 100f;
+                    if (ready) useHarmonics();
+                    refreshHarmLabels();
+                }
+            });
+        }
+        int[] presetIds = {R.id.btnPresetSine, R.id.btnPresetSaw, R.id.btnPresetSquare, R.id.btnPresetClarinet,
+                R.id.btnPresetOrgan, R.id.btnPresetVoice};
+        for (int i = 0; i < presetIds.length; i++) {
+            final float[] preset = PRESETS[i];
+            findViewById(presetIds[i]).setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { applyPreset(preset); }
+            });
+        }
+        final Button listen = (Button) findViewById(R.id.btnListen);
+        listen.setText(chkPlay.isChecked() ? "■ Тиша" : "▶ Слухати");
+        listen.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                useHarmonics();
+                chkPlay.setChecked(!chkPlay.isChecked());
+                listen.setText(chkPlay.isChecked() ? "■ Тиша" : "▶ Слухати");
+            }
+        });
+
+        int[] expIds = {R.id.btnExp1, R.id.btnExp2, R.id.btnExp3, R.id.btnExp4, R.id.btnExp5, R.id.btnExp6};
+        for (int i = 0; i < expIds.length; i++) {
+            final int n = i + 1;
+            findViewById(expIds[i]).setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { runExperiment(n); }
+            });
+        }
+    }
+
+    private void refreshHarmLabels() {
+        if (harmLabels == null) return;
+        float f0 = harmF0;
+        for (int k = 1; k <= 12; k++) {
+            if (harmLabels[k - 1] == null) continue;
+            int pct = Math.round(SignalGenerator.harmonics[k - 1] * 100);
+            String name = k == 1 ? "1× основний тон" : k + "×";
+            harmLabels[k - 1].setText(String.format(Locale.US, "%s · %s · %d%%", name, SpectrumMath.formatHz(k * f0), pct));
+            harmLabels[k - 1].setTextColor(pct > 0 ? 0xFFCBD5E1 : MUTED);
+        }
+    }
+
+    /** Switches the generator to the harmonic constructor (keeps the analysis source as is). */
+    private float harmF0 = 220f;
+
+    private void useHarmonics() {
+        SignalGenerator.waveform = SignalGenerator.Waveform.HARMONICS;
+        SignalGenerator.frequency = harmF0;
+        Spinner w = (Spinner) findViewById(R.id.spinWave);
+        if (w.getSelectedItemPosition() != WAVE_HARMONICS) w.setSelection(WAVE_HARMONICS);
+    }
+
+    private void applyPreset(float[] preset) {
+        for (int k = 0; k < 12; k++) harmSliders[k].setProgress(Math.round(preset[k] * 100));
+        useHarmonics();
+    }
+
+    private void select(int spinnerId, int pos) {
+        ((Spinner) findViewById(spinnerId)).setSelection(pos);
+    }
+
+    private void runExperiment(int n) {
+        if (currentTape != null) closeTape();
+        ((CheckBox) findViewById(R.id.chkHints)).setChecked(true);
+        String text;
+        switch (n) {
+            case 1:
+                select(R.id.spinMode, 0);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Свисніть рівно. На спектрі з'явиться один гострий пік — це чистий тон, майже синусоїда.\n\n"
+                        + "Свистіть вище й нижче: пік їде вправо (вища частота) і вліво. Частота вдвічі вища — це октава: "
+                        + "та сама нота, тільки вище.\n\nКартка внизу графіка називає частоту й ноту.";
+                break;
+            case 2:
+                select(R.id.spinMode, 0);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Протягніть «а-а-а» на одній ноті. Тепер піків багато, і вони стоять на однакових відстанях: "
+                        + "f0, 2×f0, 3×f0… Це гармоніки, вони позначені трикутниками.\n\n"
+                        + "Висоту ми чуємо за першою (f0), а від сили решти залежить тембр.\n\n"
+                        + "Не змінюючи ноти, перейдіть на «і» чи «у»: піки лишаються на місцях, але змінюється, які гучніші "
+                        + "(форманти). Саме так ми розрізняємо голосні!";
+                break;
+            case 3:
+                applyPreset(PRESETS[1]);
+                select(R.id.spinMode, MODE_FOURIER);
+                select(R.id.spinSource, 1);
+                chkPlay.setChecked(true);
+                text = "Будь-який повторюваний звук можна скласти з синусоїд — це ряд Фур'є.\n\n"
+                        + "Кожне коло обертається зі своєю частотою: 1×f0, 2×f0, 3×f0… Його розмір — гучність гармоніки. "
+                        + "Кінчик останнього кола малює хвилю праворуч. Зараз звучить «пилка».\n\n"
+                        + "Рухайте повзунки гармонік нижче або тисніть «Меандр», «Кларнет» — дивіться, як змінюються кола, "
+                        + "хвиля і звук. Оберіть джерело «Мікрофон» і заспівайте — кола покажуть ваш голос.";
+                break;
+            case 4:
+                applyPreset(PRESETS[2]);
+                select(R.id.spinMode, 0);
+                select(R.id.spinSource, 1);
+                chkPlay.setChecked(true);
+                text = "Меандр (прямокутна хвиля) складається лише з непарних гармонік: 1×, 3×, 5×, 7×… "
+                        + "з гучністю 1, 1/3, 1/5…\n\nПодивіться на трикутники: парних немає. Тому меандр звучить "
+                        + "«порожнисто», як кларнет.\n\nНатисніть «Пилка» в конструкторі — з'являться всі гармоніки, "
+                        + "і звук стане яскравішим.";
+                break;
+            case 5:
+                SignalGenerator.waveform = SignalGenerator.Waveform.PINK_NOISE;
+                select(R.id.spinWave, 5);
+                select(R.id.spinMode, 3);
+                select(R.id.spinSource, 1);
+                chkPlay.setChecked(true);
+                text = "Рожевий шум: енергія розмазана по всіх частотах, тому спектрограма — суцільна заливка, а не лінії. "
+                        + "Чистий тон дав би одну тонку вертикальну лінію.\n\n"
+                        + "Оберіть джерело «Мікрофон» і скажіть «ш-ш-ш» — це теж шум, але переважно високий (праворуч), "
+                        + "а «ф-ф-ф» тихіший і ширший.";
+                break;
+            default:
+                SignalGenerator.waveform = SignalGenerator.Waveform.LOG_SWEEP;
+                select(R.id.spinWave, 6);
+                select(R.id.spinMode, 3);
+                select(R.id.spinSource, 1);
+                chkPlay.setChecked(true);
+                text = "Частота плавно росте від 20 Гц до 20 кГц за 8 секунд — на спектрограмі це діагональ.\n\n"
+                        + "Слухайте: де звук зникає вгорі, там межа вашого слуху (у молодих 17–20 кГц, з віком нижче). "
+                        + "Найнижчі частоти не відтворює сам динамік телефона.\n\nЗробіть гучність помірною!";
+                break;
+        }
+        ((Button) findViewById(R.id.btnListen)).setText(chkPlay.isChecked() ? "■ Тиша" : "▶ Слухати");
+        txtLesson.setText(text);
+        if (!engine.isRunning()) {
+            resumeOnStart = true;
+            startEngine();
         }
     }
 

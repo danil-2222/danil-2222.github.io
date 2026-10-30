@@ -7,13 +7,15 @@ import java.util.Random;
  * the loudspeaker output always produce the same signal; each instance keeps its own phase.
  */
 final class SignalGenerator {
-    enum Waveform { SINE, SQUARE, SAWTOOTH, TRIANGLE, WHITE_NOISE, PINK_NOISE, LOG_SWEEP, DUAL_TONE }
+    enum Waveform { SINE, SQUARE, SAWTOOTH, TRIANGLE, WHITE_NOISE, PINK_NOISE, LOG_SWEEP, DUAL_TONE, HARMONICS }
 
     static final float SWEEP_SECONDS = 8f;
 
     static volatile Waveform waveform = Waveform.SINE;
     static volatile float frequency = 1000f;
     static volatile float level = 0.5f;
+    /** Amplitudes of harmonics 1..12 for the HARMONICS waveform (the learning constructor). */
+    static final float[] harmonics = {1f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     private final Random random = new Random();
     private double phase, phase2, sweepT;
@@ -62,6 +64,17 @@ final class SignalGenerator {
                     s = (float) (0.8 * Math.sin(phase) + 0.2 * Math.sin(phase2));
                     phase2 += 2 * Math.PI * 7000 / sampleRate;
                     if (phase2 >= 2 * Math.PI) phase2 -= 2 * Math.PI;
+                    break;
+                }
+                case HARMONICS: {
+                    double sum = 0, norm = 0;
+                    for (int k = 1; k <= harmonics.length; k++) {
+                        float a = harmonics[k - 1];
+                        if (a <= 0 || k * fi >= sampleRate / 2.0) continue;
+                        sum += a * Math.sin(k * phase);
+                        norm += a;
+                    }
+                    s = norm > 0 ? (float) (sum / norm) : 0f;
                     break;
                 }
                 case SINE:
