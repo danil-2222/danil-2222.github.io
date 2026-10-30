@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Аналізатор спектра звукових частот (Audio Spectrum Analyzer PRO ULTRA)</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              bg: '#080c14',
+              card: '#0f172a',
+              border: '#1e293b',
+              cyan: '#00f0ff',
+              magenta: '#ff007f',
+              green: '#39ff14',
+              yellow: '#ffe600',
+              orange: '#ff8800'
+            }
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Three.js Core & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #080c14; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
+    
+    .glow-cyan { box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); }
+    .glow-magenta { box-shadow: 0 0 15px rgba(255, 0, 127, 0.3); }
+    .glow-green { box-shadow: 0 0 15px rgba(57, 255, 20, 0.3); }
+    .text-glow-cyan { text-shadow: 0 0 8px rgba(0, 240, 255, 0.7); }
+    .text-glow-green { text-shadow: 0 0 8px rgba(57, 255, 20, 0.7); }
+    
+    /* Range input slider styling */
+    input[type=range] {
+      accent-color: #00f0ff;
+    }
+  </style>
+</head>
+<body class="bg-cyber-bg text-gray-200 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- Header (Fixed Top) -->
+  <header class="border-b border-cyber-border bg-cyber-card/90 backdrop-blur-md flex-shrink-0 z-50 px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyber-cyan via-indigo-500 to-cyber-magenta p-0.5 flex items-center justify-center glow-cyan">
+        <div class="w-full h-full bg-cyber-bg rounded-[7px] flex items-center justify-center">
+          <svg class="w-5 h-5 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+          </svg>
+        </div>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-wider text-white flex items-center gap-2">
+          СПЕКТРАЛЬНИЙ АНАЛІЗАТОР
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/30">PRO ULTRA DSP</span>
+        </h1>
+        <p class="text-[11px] text-gray-400">Web Audio API • 3D Spectrogram • RTA 1/3 • THD % • Web Serial LED</p>
+      </div>
+    </div>
+
+    <!-- Top Action Toolbar -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- Start/Resume Audio Button -->
+      <button id="btnAudioStart" class="px-3 py-1.5 rounded-lg bg-cyber-cyan text-black font-semibold text-xs flex items-center gap-1.5 hover:bg-cyan-300 transition glow-cyan">
+        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/></svg>
+        Старт Аудіо
+      </button>
+
+      <!-- Record Audio Button -->
+      <button id="btnRecord" class="px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-gray-300 font-semibold text-xs flex items-center gap-1.5 hover:border-red-500 hover:text-red-400 transition">
+        <span id="recDot" class="w-2 h-2 rounded-full bg-red-500 hidden"></span>
+        <svg id="iconRec" class="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/></svg>
+        <span id="lblRecord">Запис</span>
+      </button>
+      <span id="recTimer" class="font-mono text-xs font-bold text-red-400 hidden animate-pulse">00:00</span>
+
+      <!-- Freeze/Pause Button -->
+      <button id="btnFreeze" class="px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-gray-300 font-semibold text-xs flex items-center gap-1.5 hover:border-cyber-cyan transition" title="Натисніть Пробіл">
+        <svg id="iconFreeze" class="w-3.5 h-3.5 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span id="lblFreeze">Заморозити</span>
+      </button>
+
+      <!-- Modal Exporter Trigger -->
+      <button id="btnOpenExport" class="px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-gray-300 font-semibold text-xs flex items-center gap-1.5 hover:border-cyber-green hover:text-cyber-green transition">
+        <svg class="w-3.5 h-3.5 text-cyber-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Експорт
+      </button>
+
+      <!-- Web Serial / Hardware Modal Trigger -->
+      <button id="btnOpenSerial" class="px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-gray-300 font-semibold text-xs flex items-center gap-1.5 hover:border-cyber-yellow hover:text-cyber-yellow transition">
+        <span id="ledStatusDot" class="w-2 h-2 rounded-full bg-gray-600"></span>
+        <svg class="w-3.5 h-3.5 text-cyber-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        LED hardware
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Grid Layout (App Container) -->
+  <main class="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-3 p-3 max-w-[1920px] w-full mx-auto min-h-0 overflow-hidden">
+    
+    <!-- Canvas Visualization Area (Fixed Top Panel - Never Scrolls) -->
+    <section class="flex-shrink-0 lg:col-span-8 xl:col-span-9 lg:order-2 flex flex-col space-y-2.5 w-full lg:h-full min-h-0">
+      
+      <!-- Status HUD is a separate sibling above the graph -->
+      <div id="statusHud" class="relative flex-shrink-0 flex flex-wrap items-stretch justify-between gap-2 w-full">
+          <div class="bg-cyber-bg/95 border border-cyber-border px-3 py-2 rounded-lg flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono min-w-0">
+            <div class="min-w-[90px]">
+              <div class="text-[9px] text-gray-400 uppercase">Пікова частота</div>
+              <div id="hudPeakFreq" class="text-sm font-bold text-cyber-cyan text-glow-cyan">0 Гц</div>
+            </div>
+            <div class="hidden sm:block h-7 w-px bg-cyber-border"></div>
+            <div class="min-w-[100px]">
+              <div class="text-[9px] text-gray-400 uppercase">Нота / Відхилення</div>
+              <div id="hudNote" class="text-sm font-bold text-cyber-yellow">--</div>
+            </div>
+            <div class="hidden sm:block h-7 w-px bg-cyber-border"></div>
+            <div class="min-w-[80px]">
+              <div class="text-[9px] text-gray-400 uppercase">Peak dB</div>
+              <div id="hudPeakDb" class="text-xs font-bold text-gray-200">-100 dB</div>
+            </div>
+          </div>
+          <div class="bg-cyber-bg/95 border border-cyber-border px-3 py-2 rounded-lg text-xs font-mono text-gray-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span id="hudHint2d" class="text-[10px] text-gray-500 hidden md:inline">Колесо: зум • подвійний клік: скинути</span>
+            <span id="hudHint3d" class="text-[10px] text-cyber-cyan hidden md:inline">ЛКМ: обертати • ПКМ: зсув • Колесо: зум 3D</span>
+            <span>FPS: <span id="hudFps" class="text-cyber-green font-bold">60</span></span>
+            <span>SR: <span id="hudSampleRate" class="text-gray-200">48kHz</span></span>
+          </div>
+      </div>
+
+      <!-- Graph Stage -->
+      <div id="canvasContainer" class="relative flex-1 h-[32vh] min-h-[220px] max-h-[420px] lg:h-full lg:max-h-none bg-cyber-card border border-cyber-border rounded-xl overflow-hidden shadow-2xl flex flex-col p-2.5">
+        <div id="visualStage" class="relative flex-1 min-h-0 w-full overflow-hidden rounded-lg">
+          <canvas id="spectrumCanvas" class="absolute inset-0 w-full h-full block cursor-crosshair" style="width:100%;height:100%;z-index:1"></canvas>
+          <div id="container3d" class="w-full h-full absolute inset-0 hidden"></div>
+          <div id="tooltip" class="absolute pointer-events-none hidden bg-cyber-card/95 border border-cyber-cyan/50 backdrop-blur-md px-3 py-2 rounded-lg text-xs font-mono space-y-0.5 shadow-xl z-20">
+            <div class="text-cyber-cyan font-bold flex items-center justify-between gap-3"><span>Частота:</span><span id="ttFreq">0 Гц</span></div>
+            <div class="text-gray-300 flex items-center justify-between gap-3"><span>Нота / Центи:</span><span id="ttNote" class="text-cyber-yellow">--</span></div>
+            <div class="text-gray-400 flex items-center justify-between gap-3"><span>Рівень:</span><span id="ttDb">-inf dB</span></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Sidebar Controls -->
+    <aside class="flex-1 min-h-0 overflow-y-auto lg:col-span-4 xl:col-span-3 lg:order-1 space-y-3 pr-1 w-full pb-4">
+      
+      <!-- Card 1: Джерело аудіо & Вхідний фільтр -->
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-3.5 space-y-3">
+        <h2 class="text-xs font-mono font-semibold uppercase text-cyber-cyan tracking-wider flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+            Джерело аудіо
+          </span>
+        </h2>
+
+        <!-- Source Selector Tabs -->
+        <div class="grid grid-cols-3 gap-1 bg-cyber-bg p-1 rounded-lg border border-cyber-border text-xs font-medium">
+          <button id="tabMic" class="py-1 rounded-md text-center bg-cyber-cyan text-black font-semibold shadow transition">Мікрофон</button>
+          <button id="tabFile" class="py-1 rounded-md text-center text-gray-400 hover:text-white transition">Файл</button>
+          <button id="tabTone" class="py-1 rounded-md text-center text-gray-400 hover:text-white transition">Генератор</button>
+        </div>
+
+        <!-- Panel 1: Microphone Controls -->
+        <div id="panelMic" class="space-y-2.5">
+          <div class="space-y-1">
+            <label class="text-[11px] text-gray-400">Вхідний пристрій:</label>
+            <select id="selAudioDevice" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:border-cyber-cyan outline-none truncate">
+              <option value="">Типовий мікрофон</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between text-xs bg-cyber-bg p-2 rounded-lg border border-cyber-border">
+            <span class="text-gray-400">Статус:</span>
+            <span id="micStatus" class="font-mono text-cyber-yellow flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-cyber-yellow animate-pulse"></span>
+              Очікування...
+            </span>
+          </div>
+          <p id="micHelp" class="text-[10px] leading-relaxed text-gray-500" role="status">Для доступу до мікрофона надайте дозвіл RECORD_AUDIO в налаштуваннях APK додатка.</p>
+        </div>
+
+        <!-- Panel 2: Audio File Upload Controls -->
+        <div id="panelFile" class="space-y-2.5 hidden">
+          <div id="dropzone" class="border-2 border-dashed border-cyber-border hover:border-cyber-cyan rounded-lg p-3 text-center cursor-pointer transition bg-cyber-bg/50">
+            <input type="file" id="fileInput" accept="audio/*" class="hidden">
+            <svg class="w-6 h-6 text-gray-500 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            <p class="text-xs text-gray-300 font-medium">Оберіть файл (MP3, WAV, FLAC, OGG)</p>
+          </div>
+
+          <div id="filePlayer" class="space-y-1.5 hidden">
+            <p id="fileName" class="text-xs font-mono text-cyber-cyan truncate">track.mp3</p>
+            <input type="range" id="fileSeek" min="0" max="100" value="0" step="0.1" class="w-full h-1 bg-cyber-border rounded-lg appearance-none cursor-pointer">
+            <div class="flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span id="fileCurrentTime">00:00</span>
+              <span id="fileDuration">00:00</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnPlayPause" class="flex-1 py-1 bg-cyber-cyan text-black font-semibold rounded-lg text-xs hover:bg-cyan-300 transition">Плей</button>
+              <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+                <input type="checkbox" id="chkLoop" class="rounded border-cyber-border text-cyber-cyan focus:ring-0"> Петля
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 3: Multi-Signal Generator Controls -->
+        <div id="panelTone" class="space-y-2.5 hidden">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-gray-400">Форма сигналу</label>
+              <select id="selGenWaveform" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs text-gray-200 outline-none">
+                <option value="sine">Синусоїда</option>
+                <option value="square">Меандр (Square)</option>
+                <option value="sawtooth">Пила (Sawtooth)</option>
+                <option value="triangle">Трикутник</option>
+                <option value="white_noise">Білий шум</option>
+                <option value="pink_noise">Рожевий шум</option>
+                <option value="log_sweep">Логарифмічний Свип (20-20k)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-gray-400">Гучність</label>
+              <input type="range" id="sliderToneVol" min="0" max="1" value="0.2" step="0.01" class="w-full h-1.5 mt-2">
+            </div>
+          </div>
+
+          <div id="genFreqControls" class="space-y-1">
+            <div class="flex justify-between text-xs">
+              <span class="text-gray-400">Частота тону:</span>
+              <span id="lblToneFreq" class="font-mono text-cyber-cyan font-bold">440 Гц</span>
+            </div>
+            <input type="range" id="sliderToneFreq" min="20" max="20000" value="440" step="1" class="w-full h-1.5">
+          </div>
+
+          <div id="genSweepControls" class="space-y-1 hidden">
+            <button id="btnTriggerSweep" class="w-full py-1.5 bg-cyber-orange text-black font-bold text-xs rounded-lg hover:bg-orange-400 transition">Запустити Свип (20Гц - 20кГц / 3сек)</button>
+          </div>
+        </div>
+
+        <!-- Parametric Pre-Filter (BiquadFilter) -->
+        <div class="pt-2 border-t border-cyber-border/60 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-300 font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5 text-cyber-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              Вхідний Пре-Фільтр
+            </span>
+            <label class="flex items-center gap-1 text-[11px] text-gray-400 cursor-pointer">
+              <input type="checkbox" id="chkFilterEnable" class="rounded border-cyber-border text-cyber-yellow focus:ring-0"> Увімкнути
+            </label>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <select id="selFilterType" class="bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-[11px] text-gray-200 outline-none">
+              <option value="notch50">Notch 50Hz (Гул мережі)</option>
+              <option value="highpass">Highpass (ФВЧ 100Hz)</option>
+              <option value="lowpass">Lowpass (ФНЧ 5kHz)</option>
+              <option value="bandpass">Bandpass (300Hz-3kHz)</option>
+            </select>
+            <div class="flex items-center justify-between bg-cyber-bg px-2 py-1 rounded-lg border border-cyber-border">
+              <span class="text-[10px] text-gray-400">Gain:</span>
+              <span id="lblInputGain" class="font-mono text-cyber-green text-[11px] font-bold">0 дБ</span>
+            </div>
+          </div>
+          <input type="range" id="sliderInputGain" min="-20" max="30" value="0" step="1" class="w-full h-1.5">
+        </div>
+
+      </div>
+
+      <!-- Card 2: Режими Візуалізації -->
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-3.5 space-y-3">
+        <h2 class="text-xs font-mono font-semibold uppercase text-cyber-magenta tracking-wider flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+          Режими візуалізації
+        </h2>
+
+        <div class="space-y-1">
+          <select id="selVizMode" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:border-cyber-cyan outline-none">
+            <option value="bars">2D Спектр (Стовпчики)</option>
+            <option value="line">2D Спектр (Лінія)</option>
+            <option value="rta_1_3">ISO 1/3-Октавний Аналізатор (RTA)</option>
+            <option value="waterfall">2D Водоспад (Waterfall)</option>
+            <option value="3d_waterfall">3D Водоспад (Three.js WebGL)</option>
+            <option value="oscilloscope">Осцилограма (Waveform Trigger)</option>
+            <option value="tuner">Інструментальний Тюнер</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-gray-400">Шкала частот</label>
+            <select id="selScale" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs text-gray-200 outline-none">
+              <option value="logarithmic">Логарифмічна</option>
+              <option value="linear">Лінійна</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-400">Палітра кольорів</label>
+            <select id="selPalette" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs text-gray-200 outline-none">
+              <option value="neon">Неон (Cyan/Purple)</option>
+              <option value="cyberpunk">Кіберпанк (Green/Red)</option>
+              <option value="rainbow">Веселка (Rainbow)</option>
+              <option value="fire">Термальна (Fire)</option>
+              <option value="monochrome">Монохром</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="space-y-1.5 pt-1 border-t border-cyber-border/60">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-400">Межі частот (Гц):</span>
+            <button id="btnResetZoom" class="text-[10px] text-cyber-cyan hover:underline font-mono">Скинути зум</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="number" id="inputFmin" min="20" max="19999" value="20" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs font-mono text-gray-200">
+            <input type="number" id="inputFmax" min="21" max="22000" value="20000" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs font-mono text-gray-200">
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs pt-1">
+          <label class="flex items-center gap-1.5 text-gray-300 cursor-pointer">
+            <input type="checkbox" id="chkPeakHold" checked class="rounded border-cyber-border text-cyber-cyan focus:ring-0"> Peak Hold
+          </label>
+        </div>
+      </div>
+
+      <!-- Card 3: DSP, Гармоніки, THD % та BPM -->
+      <div class="bg-cyber-card border border-cyber-border rounded-xl p-3.5 space-y-3">
+        <h2 class="text-xs font-mono font-semibold uppercase text-cyber-green tracking-wider flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+          Аналіз DSP / Гармоніки / BPM
+        </h2>
+
+        <div class="bg-cyber-bg p-2.5 rounded-lg border border-cyber-border space-y-1.5 font-mono text-xs">
+          <div class="flex justify-between items-center text-gray-400">
+            <span>Основна частота (F0):</span>
+            <span id="dspF0" class="text-cyber-cyan font-bold">0 Гц</span>
+          </div>
+          <div class="flex justify-between items-center text-gray-400">
+            <span>Спотворення (THD %):</span>
+            <span id="dspTHD" class="text-cyber-yellow font-bold">0.00 %</span>
+          </div>
+          <div class="flex justify-between items-center text-gray-400">
+            <span>Сигнал/Шум (SNR):</span>
+            <span id="dspSNR" class="text-cyber-green font-bold">0.0 dB</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between bg-cyber-bg p-2.5 rounded-lg border border-cyber-border font-mono text-xs">
+          <div class="flex items-center gap-2">
+            <span id="bpmPulseDot" class="w-3 h-3 rounded-full bg-cyber-magenta opacity-30 transition-all duration-75"></span>
+            <span class="text-gray-400">Ритм (BPM):</span>
+          </div>
+          <span id="dspBPM" class="text-cyber-magenta font-bold text-sm">-- BPM</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label class="text-[10px] text-gray-400">FFT Розмір</label>
+            <select id="selFftSize" class="w-full bg-cyber-bg border border-cyber-border rounded-lg px-2 py-1 text-xs text-gray-200 outline-none">
+              <option value="512">512</option>
+              <option value="1024">1024</option>
+              <option value="2048" selected>2048</option>
+              <option value="4096">4096</option>
+              <option value="8192">8192</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] text-gray-400">Smoothing</label>
+            <input type="range" id="sliderSmoothing" min="0" max="0.95" value="0.8" step="0.01" class="w-full h-1.5 mt-2">
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- MODAL 1: Export Data & Graphics -->
+  <div id="modalExport" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-cyber-card border border-cyber-border rounded-xl p-5 max-w-lg w-full mx-4 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-cyber-border pb-2">
+        <h3 class="text-sm font-bold font-mono text-cyber-green flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Експорт Даних та Графіки
+        </h3>
+        <button id="btnCloseExport" class="text-gray-400 hover:text-white font-bold">&times;</button>
+      </div>
+      
+      <p class="text-xs text-gray-300">Оберіть формат збереження або скопіюйте дані поточного кадру:</p>
+      
+      <div class="grid grid-cols-2 gap-2">
+        <button id="btnExportCSV" class="py-2 px-3 bg-cyber-bg border border-cyber-border hover:border-cyber-cyan text-xs font-mono rounded-lg transition text-left flex items-center gap-2">
+          <span class="text-cyber-cyan font-bold">CSV</span> Таблиця (.csv)
+        </button>
+        <button id="btnExportJSON" class="py-2 px-3 bg-cyber-bg border border-cyber-border hover:border-cyber-yellow text-xs font-mono rounded-lg transition text-left flex items-center gap-2">
+          <span class="text-cyber-yellow font-bold">JSON</span> Масив (.json)
+        </button>
+        <button id="btnExportPNG" class="py-2 px-3 bg-cyber-bg border border-cyber-border hover:border-cyber-green text-xs font-mono rounded-lg transition text-left flex items-center gap-2">
+          <span class="text-cyber-green font-bold">PNG</span> Знімки (.png)
+        </button>
+        <button id="btnExportSVG" class="py-2 px-3 bg-cyber-bg border border-cyber-border hover:border-cyber-magenta text-xs font-mono rounded-lg transition text-left flex items-center gap-2">
+          <span class="text-cyber-magenta font-bold">SVG</span> Вектор (.svg)
+        </button>
+      </div>
+
+      <div id="exportPreviewArea" class="hidden space-y-2 pt-2 border-t border-cyber-border">
+        <div class="flex items-center justify-between text-xs">
+          <span id="exportStatusText" class="text-cyber-green font-mono font-semibold">✓ Дані підготовлено</span>
+          <button id="btnCopyExport" class="px-2.5 py-1 bg-cyber-cyan text-black font-bold text-[11px] rounded hover:bg-cyan-300 transition">Скопіювати дані</button>
+        </div>
+        <textarea id="exportTextarea" rows="5" class="w-full bg-cyber-bg border border-cyber-border rounded-lg p-2 font-mono text-[11px] text-gray-300 outline-none resize-none" readonly></textarea>
+        <div id="exportImgContainer" class="hidden text-center space-y-1">
+          <p class="text-[10px] text-gray-400">Порада: затисніть зображення для збереження в галерею</p>
+          <img id="exportImgPreview" class="max-h-48 mx-auto rounded border border-cyber-border object-contain bg-black/40" alt="Прев'ю графіки">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Web Serial / WebSocket Hardware Setup -->
+  <div id="modalSerial" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-cyber-card border border-cyber-border rounded-xl p-5 max-w-md w-full mx-4 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-cyber-border pb-2">
+        <h3 class="text-sm font-bold font-mono text-cyber-yellow flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Web Serial & WebSocket (Smart Home / LED)
+        </h3>
+        <button id="btnCloseSerial" class="text-gray-400 hover:text-white font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div class="space-y-2 bg-cyber-bg p-3 rounded-lg border border-cyber-border">
+          <span class="font-bold text-gray-200">1. Web Serial API (Arduino / ESP32)</span>
+          <p class="text-[11px] text-gray-400">Трансляція рівнів Bass, Mid, Treble (0-255) через COM-порт.</p>
+          <button id="btnConnectSerial" class="w-full py-1.5 bg-cyber-yellow text-black font-bold rounded-lg hover:bg-yellow-400 transition">Підключити USB/Serial пристрій</button>
+        </div>
+
+        <div class="space-y-2 bg-cyber-bg p-3 rounded-lg border border-cyber-border">
+          <span class="font-bold text-gray-200">2. WebSocket Трансляція</span>
+          <div class="flex gap-2">
+            <input type="text" id="inputWsUrl" value="ws://localhost:8080" class="flex-1 bg-cyber-card border border-cyber-border rounded px-2 py-1 text-xs">
+            <button id="btnConnectWS" class="px-3 py-1 bg-cyber-cyan text-black font-bold rounded hover:bg-cyan-300 transition">З'єднати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Engine -->
+  <script>
+    // --- State Variables ---
+    let audioCtx = null;
+    let analyser = null;
+    let gainNode = null;
+    let biquadFilter = null;
+    let analyserOutputConnected = false;
+    
+    // Recording & Export State
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recDestinationNode = null;
+    let isRecording = false;
+    let recStartTime = 0;
+    let recTimerInterval = null;
+
+    // Sources
+    let currentSourceType = 'mic';
+    let micStream = null;
+    let micSourceNode = null;
+    let audioFileEl = new Audio();
+    audioFileEl.preload = 'metadata';
+    let currentAudioObjectUrl = null;
+    let fileSourceNode = null;
+    
+    // Multi-Signal Generator Nodes
+    let genOscNode = null;
+    let genGainNode = null;
+    let genNoiseNode = null;
+
+    // Freq Limits
+    let fMin = 20;
+    let fMax = 20000;
+
+    // Visualizer Settings
+    let vizMode = 'bars';
+    let scaleType = 'logarithmic';
+    let paletteName = 'neon';
+    let peakHoldEnabled = true;
+    let isFrozen = false;
+    let inputGainDb = 0;
+    
+    // Canvas & Offscreen Waterfall Canvas
+    const canvas = document.getElementById('spectrumCanvas');
+    const ctx = canvas.getContext('2d');
+    let waterfallCanvas = document.createElement('canvas');
+    let waterfallCtx = waterfallCanvas.getContext('2d');
+    
+    // 3D Instance
+    let spectrum3DInstance = null;
+
+    // Data Buffers
+    let freqData = new Uint8Array(0);
+    let floatFreqData = new Float32Array(0);
+    let timeData = new Uint8Array(0);
+    let peakData = [];
+    
+    // Beat & BPM Tracking
+    let bpmEnergyHistory = [];
+    let lastBeatTime = 0;
+    let currentBPM = 0;
+
+    // Hardware Web Serial & WebSocket
+    let serialPort = null;
+    let serialWriter = null;
+    let webSocketConn = null;
+    let lastHardwareSendTime = 0;
+
+    // Timing & Mouse Tooltip
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+    let fps = 60;
+    let mouseX = -1, mouseY = -1, isHovering = false;
+
+    // Standard ISO 1/3-Octave Frequencies
+    const RTA_1_3_FREQS = [
+      25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315,
+      400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150,
+      4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000
+    ];
+
+    const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+    function freqToNoteDetailed(freq) {
+      if (!Number.isFinite(freq) || freq < 15 || freq > 22000) {
+        return { note: '--', cents: '', full: '--', centsVal: 0 };
+      }
+      const pitch = 12 * (Math.log2(freq / 440)) + 69;
+      const noteIndex = Math.round(pitch);
+      if (noteIndex < 0) return { note: '--', cents: '' };
+      
+      const noteName = NOTE_NAMES[((noteIndex % 12) + 12) % 12];
+      const octave = Math.floor(noteIndex / 12) - 1;
+      const cents = Math.round((pitch - noteIndex) * 100);
+      const centsStr = cents >= 0 ? `+${cents}¢` : `${cents}¢`;
+
+      return {
+        note: `${noteName}${octave}`,
+        cents: centsStr,
+        full: `${noteName}${octave} ${centsStr}`,
+        centsVal: cents
+      };
+    }
+
+    function ColorPalette(name, value) {
+      const v = Math.max(0, Math.min(1, value));
+      switch (name) {
+        case 'cyberpunk':
+          return v < 0.5 
+            ? `rgb(${Math.round(57 * v * 2)}, ${Math.round(255 * (1 - v * 0.4))}, 20)`
+            : `rgb(255, ${Math.round(230 * (1 - (v - 0.5) * 2))}, 20)`;
+        case 'rainbow':
+          return `hsl(${(1 - v) * 280}, 100%, 50%)`;
+        case 'fire':
+          if (v < 0.33) return `rgb(${Math.round((v / 0.33) * 255)}, 0, 0)`;
+          if (v < 0.66) return `rgb(255, ${Math.round(((v - 0.33) / 0.33) * 200)}, 0)`;
+          return `rgb(255, 255, ${Math.round(((v - 0.66) / 0.34) * 255)})`;
+        case 'monochrome':
+          const c = Math.round(v * 255);
+          return `rgb(${c}, ${c}, ${c})`;
+        case 'neon':
+        default:
+          return v < 0.5
+            ? `rgb(${Math.round(139 * v * 2)}, ${Math.round(240 - 148 * v * 2)}, 255)`
+            : `rgb(${Math.round(139 + 116 * (v - 0.5) * 2)}, ${Math.round(92 * (1 - (v - 0.5) * 2))}, 246)`;
+      }
+    }
+
+    // Un-suspend AudioContext on user gestures
+    ['click', 'touchstart', 'keydown'].forEach(evtType => {
+      window.addEventListener(evtType, () => {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(e => console.warn('AudioContext resume handler:', e));
+        }
+      }, { passive: true });
+    });
+
+    // 3D Spectrogram Class
+    class Spectrum3D {
+      constructor(containerId) {
+        this.container = document.getElementById(containerId);
+        this.gridX = 128;
+        this.gridZ = 80;
+        this.width = 100;
+        this.depth = 120;
+        this.maxHeight = 35;
+
+        this.initScene();
+        this.initGeometry();
+      }
+
+      initScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x080c14);
+
+        const w = this.container.clientWidth || 800;
+        const h = this.container.clientHeight || 400;
+        this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+        this.camera.position.set(0, 60, 110);
+        this.camera.lookAt(0, 0, 0);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setSize(w, h, false);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        this.renderer.domElement.style.width = '100%';
+        this.renderer.domElement.style.height = '100%';
+        this.renderer.domElement.style.display = 'block';
+
+        this.container.innerHTML = '';
+        this.container.appendChild(this.renderer.domElement);
+
+        if (typeof THREE.OrbitControls !== 'undefined') {
+          this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+          this.controls.enableDamping = true;
+          this.controls.dampingFactor = 0.05;
+        } else {
+          this.controls = { update: () => {} };
+        }
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+        this.scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0x00f0ff, 1.2);
+        dirLight.position.set(30, 100, 50);
+        this.scene.add(dirLight);
+
+        const gridHelper = new THREE.GridHelper(this.depth * 1.3, 24, 0x00f0ff, 0x1e293b);
+        gridHelper.position.y = -0.1;
+        this.scene.add(gridHelper);
+      }
+
+      initGeometry() {
+        this.geometry = new THREE.PlaneGeometry(this.width, this.depth, this.gridX - 1, this.gridZ - 1);
+        this.geometry.rotateX(-Math.PI / 2);
+
+        const count = this.geometry.attributes.position.count;
+        this.colors = new Float32Array(count * 3);
+        
+        for (let i = 0; i < count; i++) {
+          this.colors[i * 3] = 0.05;
+          this.colors[i * 3 + 1] = 0.1;
+          this.colors[i * 3 + 2] = 0.2;
+        }
+        
+        this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+
+        const material = new THREE.MeshPhongMaterial({
+          color: 0xffffff,
+          vertexColors: true,
+          wireframe: false,
+          side: THREE.DoubleSide,
+          shininess: 40,
+          flatShading: true
+        });
+
+        this.mesh = new THREE.Mesh(this.geometry, material);
+        this.scene.add(this.mesh);
+      }
+
+      update(freqDataBuffer, nyquist) {
+        if (!this.container) return;
+        this.controls.update();
+
+        if (freqDataBuffer && freqDataBuffer.length > 0 && !isFrozen) {
+          const pos = this.geometry.attributes.position;
+          const cols = this.geometry.attributes.color;
+
+          for (let z = this.gridZ - 1; z > 0; z--) {
+            for (let x = 0; x < this.gridX; x++) {
+              const currIdx = z * this.gridX + x;
+              const prevIdx = (z - 1) * this.gridX + x;
+              pos.setY(currIdx, pos.getY(prevIdx));
+              cols.setXYZ(currIdx, cols.getX(prevIdx), cols.getY(prevIdx), cols.getZ(prevIdx));
+            }
+          }
+
+          const bufferLen = freqDataBuffer.length;
+          const cssWidth = this.container.clientWidth || 800;
+
+          for (let x = 0; x < this.gridX; x++) {
+            const freq = getFreqFromX((x / (this.gridX - 1)) * cssWidth, cssWidth, nyquist);
+            const binIndex = Math.min(bufferLen - 1, Math.max(0, Math.floor((freq / nyquist) * bufferLen)));
+            const val = freqDataBuffer[binIndex] || 0;
+            const normVal = val / 255.0;
+
+            pos.setY(x, normVal * this.maxHeight);
+
+            const colStr = ColorPalette(paletteName, normVal);
+            let r = 0, g = 0.8, b = 1;
+            if (colStr.startsWith('hsl')) {
+              const hMatch = colStr.match(/hsl\(([\d.]+),\s*([\d.]+)%,\s*([\d.]+)%\)/);
+              if (hMatch) {
+                const c = new THREE.Color();
+                c.setHSL(parseFloat(hMatch[1]) / 360, parseFloat(hMatch[2]) / 100, parseFloat(hMatch[3]) / 100);
+                r = c.r; g = c.g; b = c.b;
+              }
+            } else {
+              const parts = colStr.match(/\d+/g);
+              if (parts) {
+                r = parseInt(parts[0]) / 255;
+                g = parseInt(parts[1]) / 255;
+                b = parseInt(parts[2]) / 255;
+              }
+            }
+
+            cols.setXYZ(x, r, g, b);
+          }
+
+          pos.needsUpdate = true;
+          cols.needsUpdate = true;
+          this.geometry.computeVertexNormals();
+        }
+
+        this.renderer.render(this.scene, this.camera);
+      }
+
+      onWindowResize() {
+        if (!this.container) return;
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        if (w <= 0 || h <= 0) return;
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h, false);
+      }
+    }
+
+    // Audio Context Setup
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtxClass) throw new Error('Цей браузер не підтримує Web Audio API.');
+        audioCtx = new AudioCtxClass();
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = parseInt(document.getElementById('selFftSize').value);
+        analyser.smoothingTimeConstant = parseFloat(document.getElementById('sliderSmoothing').value);
+
+        gainNode = audioCtx.createGain();
+        biquadFilter = audioCtx.createBiquadFilter();
+
+        gainNode.connect(biquadFilter);
+        biquadFilter.connect(analyser);
+
+        recDestinationNode = audioCtx.createMediaStreamDestination();
+        analyser.connect(recDestinationNode);
+
+        document.getElementById('hudSampleRate').textContent = `${Math.round(audioCtx.sampleRate / 1000)}kHz`;
+        updatePreFilter();
+        populateAudioDevices();
+      }
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(err => console.warn('Не вдалося відновити AudioContext:', err));
+      }
+    }
+
+    function updatePreFilter() {
+      if (!biquadFilter || !audioCtx) return;
+      const isEnabled = document.getElementById('chkFilterEnable').checked;
+      const fType = document.getElementById('selFilterType').value;
+
+      if (!isEnabled) {
+        biquadFilter.type = 'allpass';
+        return;
+      }
+
+      if (fType === 'notch50') {
+        biquadFilter.type = 'notch';
+        biquadFilter.frequency.setValueAtTime(50, audioCtx.currentTime);
+        biquadFilter.Q.setValueAtTime(10, audioCtx.currentTime);
+      } else if (fType === 'highpass') {
+        biquadFilter.type = 'highpass';
+        biquadFilter.frequency.setValueAtTime(100, audioCtx.currentTime);
+      } else if (fType === 'lowpass') {
+        biquadFilter.type = 'lowpass';
+        biquadFilter.frequency.setValueAtTime(5000, audioCtx.currentTime);
+      } else if (fType === 'bandpass') {
+        biquadFilter.type = 'bandpass';
+        biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime);
+        biquadFilter.Q.setValueAtTime(1, audioCtx.currentTime);
+      }
+    }
+
+    function updateInputGain() {
+      if (gainNode && audioCtx) {
+        const linGain = Math.pow(10, inputGainDb / 20);
+        gainNode.gain.setValueAtTime(linGain, audioCtx.currentTime);
+      }
+    }
+
+    function setAnalyserOutputEnabled(enabled) {
+      if (!analyser || !audioCtx || analyserOutputConnected === enabled) return;
+      try {
+        if (enabled) analyser.connect(audioCtx.destination);
+        else analyser.disconnect(audioCtx.destination);
+        analyserOutputConnected = enabled;
+      } catch (err) {
+        console.warn('Не вдалося змінити аудіовихід:', err);
+      }
+    }
+
+    async function populateAudioDevices() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        const sel = document.getElementById('selAudioDevice');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Типовий мікрофон</option>';
+        audioInputs.forEach((d, i) => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Мікрофон ${i + 1}`;
+          sel.appendChild(opt);
+        });
+        if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+      } catch (e) {
+        console.warn("Device enum error:", e);
+      }
+    }
+
+    // Source Selection
+    async function setAudioSource(type) {
+      try {
+        ensureAudioContext();
+        if (audioCtx && audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+      } catch (err) {
+        alert(err.message || 'Не вдалося запустити аудіосистему.');
+        return;
+      }
+
+      const previousSourceType = currentSourceType;
+      if (previousSourceType === 'file' && type !== 'file') {
+        audioFileEl.pause();
+        document.getElementById('btnPlayPause').textContent = 'Плей';
+        setAnalyserOutputEnabled(false);
+      }
+      if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+      }
+      if (micSourceNode) {
+        try { micSourceNode.disconnect(); } catch (e) {}
+        micSourceNode = null;
+      }
+      stopMultiGen();
+      currentSourceType = type;
+      bpmEnergyHistory = [];
+      lastBeatTime = 0;
+      currentBPM = 0;
+      document.getElementById('dspBPM').textContent = '-- BPM';
+
+      document.getElementById('panelMic').classList.add('hidden');
+      document.getElementById('panelFile').classList.add('hidden');
+      document.getElementById('panelTone').classList.add('hidden');
+
+      ['tabMic', 'tabFile', 'tabTone'].forEach(id => {
+        document.getElementById(id).className = "py-1 rounded-md text-center text-gray-400 hover:text-white transition";
+      });
+
+      if (type === 'mic') {
+        document.getElementById('panelMic').classList.remove('hidden');
+        document.getElementById('tabMic').className = "py-1 rounded-md text-center bg-cyber-cyan text-black font-semibold shadow transition";
+        setupMicrophone();
+      } else if (type === 'file') {
+        document.getElementById('panelFile').classList.remove('hidden');
+        document.getElementById('tabFile').className = "py-1 rounded-md text-center bg-cyber-cyan text-black font-semibold shadow transition";
+        setupAudioFile();
+      } else if (type === 'tone') {
+        document.getElementById('panelTone').classList.remove('hidden');
+        document.getElementById('tabTone').className = "py-1 rounded-md text-center bg-cyber-cyan text-black font-semibold shadow transition";
+        setupMultiGen();
+      }
+    }
+
+    async function setupMicrophone() {
+      const micStatus = document.getElementById('micStatus');
+      const micHelp = document.getElementById('micHelp');
+      const devId = document.getElementById('selAudioDevice').value;
+      try {
+        micStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyber-yellow animate-pulse"></span> Очікування...`;
+        micStatus.className = 'font-mono text-cyber-yellow flex items-center gap-1.5';
+        micHelp.textContent = 'Очікуємо дозвіл на мікрофон…';
+
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+          const unavailable = new Error('Браузер або WebView не надав API мікрофона.');
+          unavailable.name = 'MicrophoneApiUnavailable';
+          throw unavailable;
+        }
+
+        const constraints = {
+          audio: devId ? { deviceId: { exact: devId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+                       : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        };
+        micStream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (audioCtx && audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        micSourceNode = audioCtx.createMediaStreamSource(micStream);
+        micSourceNode.connect(gainNode);
+        micStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyber-green"></span> Активний`;
+        micStatus.className = 'font-mono text-cyber-green flex items-center gap-1.5';
+        micHelp.textContent = 'Мікрофон підключено.';
+        await populateAudioDevices();
+      } catch (err) {
+        if (micStream) {
+          micStream.getTracks().forEach(track => track.stop());
+          micStream = null;
+        }
+        micStatus.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyber-magenta"></span> Недоступний`;
+        micStatus.className = 'font-mono text-cyber-magenta flex items-center gap-1.5';
+        micHelp.textContent = `Не вдалося ввімкнути мікрофон. Перевірте дозволи APK додатка.`;
+        console.warn('Помилка доступу до мікрофона:', err);
+      }
+    }
+
+    function setupAudioFile() {
+      if (!fileSourceNode) {
+        fileSourceNode = audioCtx.createMediaElementSource(audioFileEl);
+        fileSourceNode.connect(gainNode);
+      }
+      setAnalyserOutputEnabled(true);
+    }
+
+    function setupMultiGen() {
+      stopMultiGen();
+      const wave = document.getElementById('selGenWaveform').value;
+      const vol = parseFloat(document.getElementById('sliderToneVol').value);
+
+      genGainNode = audioCtx.createGain();
+      genGainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+      genGainNode.connect(gainNode);
+      genGainNode.connect(audioCtx.destination);
+
+      if (wave === 'white_noise' || wave === 'pink_noise') {
+        document.getElementById('genFreqControls').classList.add('hidden');
+        document.getElementById('genSweepControls').classList.add('hidden');
+
+        const bufferSize = audioCtx.sampleRate * 2;
+        const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+
+        if (wave === 'white_noise') {
+          for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+          }
+        } else {
+          let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+          for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            b0 = 0.99886 * b0 + white * 0.0555179;
+            b1 = 0.99332 * b1 + white * 0.0750759;
+            b2 = 0.96900 * b2 + white * 0.1538520;
+            b3 = 0.86650 * b3 + white * 0.3104856;
+            b4 = 0.55000 * b4 + white * 0.5329522;
+            b5 = -0.7616 * b5 - white * 0.0168980;
+            output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+            output[i] *= 0.11;
+            b6 = white * 0.115926;
+          }
+        }
+
+        genNoiseNode = audioCtx.createBufferSource();
+        genNoiseNode.buffer = noiseBuffer;
+        genNoiseNode.loop = true;
+        genNoiseNode.connect(genGainNode);
+        genNoiseNode.start();
+
+      } else if (wave === 'log_sweep') {
+        document.getElementById('genFreqControls').classList.add('hidden');
+        document.getElementById('genSweepControls').classList.remove('hidden');
+      } else {
+        document.getElementById('genFreqControls').classList.remove('hidden');
+        document.getElementById('genSweepControls').classList.add('hidden');
+
+        const freq = parseFloat(document.getElementById('sliderToneFreq').value);
+        genOscNode = audioCtx.createOscillator();
+        genOscNode.type = wave;
+        genOscNode.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        genOscNode.connect(genGainNode);
+        genOscNode.start();
+      }
+    }
+
+    function triggerLogSweep() {
+      if (!audioCtx) return;
+      stopMultiGen();
+      const vol = parseFloat(document.getElementById('sliderToneVol').value);
+
+      genGainNode = audioCtx.createGain();
+      genGainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+      genGainNode.connect(gainNode);
+      genGainNode.connect(audioCtx.destination);
+
+      genOscNode = audioCtx.createOscillator();
+      genOscNode.type = 'sine';
+      
+      const startTime = audioCtx.currentTime;
+      const duration = 3.0;
+      genOscNode.frequency.setValueAtTime(20, startTime);
+      genOscNode.frequency.exponentialRampToValueAtTime(20000, startTime + duration);
+
+      genOscNode.connect(genGainNode);
+      genOscNode.start(startTime);
+      genOscNode.stop(startTime + duration);
+    }
+
+    function stopMultiGen() {
+      if (genOscNode) { try { genOscNode.stop(); } catch (e) {} genOscNode = null; }
+      if (genNoiseNode) { try { genNoiseNode.stop(); } catch (e) {} genNoiseNode = null; }
+      genGainNode = null;
+    }
+
+    document.getElementById('chkFilterEnable').addEventListener('change', updatePreFilter);
+    document.getElementById('selFilterType').addEventListener('change', updatePreFilter);
+    document.getElementById('selGenWaveform').addEventListener('change', () => { if (currentSourceType === 'tone') setupMultiGen(); });
+    document.getElementById('btnTriggerSweep').addEventListener('click', triggerLogSweep);
+    document.getElementById('sliderToneFreq').addEventListener('input', (e) => {
+      const f = parseFloat(e.target.value);
+      document.getElementById('lblToneFreq').textContent = `${f} Гц`;
+      if (genOscNode && currentSourceType === 'tone') genOscNode.frequency.setValueAtTime(f, audioCtx.currentTime);
+    });
+    document.getElementById('sliderToneVol').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (genGainNode) genGainNode.gain.setValueAtTime(v, audioCtx.currentTime);
+    });
+
+    document.getElementById('sliderInputGain').addEventListener('input', (e) => {
+      inputGainDb = parseFloat(e.target.value);
+      document.getElementById('lblInputGain').textContent = `${inputGainDb > 0 ? '+' : ''}${inputGainDb} дБ`;
+      updateInputGain();
+    });
+
+    // Audio File Drag Drop & Controls
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const fileSeek = document.getElementById('fileSeek');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-cyber-cyan'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-cyber-cyan'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-cyber-cyan');
+      if (e.dataTransfer.files.length > 0) loadAudioFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) loadAudioFile(e.target.files[0]); });
+
+    function loadAudioFile(file) {
+      if (!file) return;
+      try {
+        ensureAudioContext();
+      } catch (err) {
+        alert(err.message || 'Не вдалося запустити аудіосистему.');
+        return;
+      }
+
+      audioFileEl.pause();
+      if (currentAudioObjectUrl) URL.revokeObjectURL(currentAudioObjectUrl);
+      currentAudioObjectUrl = URL.createObjectURL(file);
+      audioFileEl.src = currentAudioObjectUrl;
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('filePlayer').classList.remove('hidden');
+      document.getElementById('fileDuration').textContent = '…';
+      audioFileEl.onloadedmetadata = () => {
+        document.getElementById('fileDuration').textContent = Number.isFinite(audioFileEl.duration) ? formatTime(audioFileEl.duration) : '--:--';
+      };
+      setAudioSource('file');
+      const playAttempt = audioFileEl.play();
+      if (playAttempt && typeof playAttempt.catch === 'function') {
+        playAttempt.then(() => { btnPlayPause.textContent = 'Пауза'; }).catch(err => {
+          btnPlayPause.textContent = 'Плей';
+          console.warn('Не вдалося відтворити аудіофайл:', err);
+        });
+      }
+    }
+
+    btnPlayPause.addEventListener('click', () => {
+      if (audioFileEl.paused) {
+        const playAttempt = audioFileEl.play();
+        if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(err => {
+          console.warn('Не вдалося відтворити аудіофайл:', err);
+        });
+      } else {
+        audioFileEl.pause();
+      }
+    });
+
+    audioFileEl.addEventListener('play', () => { btnPlayPause.textContent = 'Пауза'; });
+    audioFileEl.addEventListener('pause', () => { btnPlayPause.textContent = 'Плей'; });
+    audioFileEl.addEventListener('ended', () => { btnPlayPause.textContent = 'Плей'; });
+    audioFileEl.addEventListener('timeupdate', () => {
+      if (!isNaN(audioFileEl.duration)) {
+        fileSeek.value = (audioFileEl.currentTime / audioFileEl.duration) * 100;
+        document.getElementById('fileCurrentTime').textContent = formatTime(audioFileEl.currentTime);
+      }
+    });
+    fileSeek.addEventListener('input', () => {
+      if (!isNaN(audioFileEl.duration)) audioFileEl.currentTime = (fileSeek.value / 100) * audioFileEl.duration;
+    });
+
+    function formatTime(s) {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    document.getElementById('tabMic').addEventListener('click', () => setAudioSource('mic'));
+    document.getElementById('tabFile').addEventListener('click', () => setAudioSource('file'));
+    document.getElementById('tabTone').addEventListener('click', () => setAudioSource('tone'));
+    document.getElementById('selAudioDevice').addEventListener('change', () => {
+      if (currentSourceType === 'mic') setAudioSource('mic');
+    });
+
+    document.getElementById('btnAudioStart').addEventListener('click', async () => {
+      try {
+        ensureAudioContext();
+        if (audioCtx && audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        await setAudioSource(currentSourceType);
+      } catch (err) {
+        console.error('Не вдалося запустити аудіо:', err);
+        alert(err.message || 'Не вдалося запустити аудіо.');
+      }
+    });
+
+    document.getElementById('btnRecord').addEventListener('click', toggleRecording);
+
+    function toggleRecording() {
+      try {
+        ensureAudioContext();
+        if (!isRecording) {
+          if (typeof MediaRecorder === 'undefined') {
+            alert('Запис не підтримується цим браузером/WebView.');
+            return;
+          }
+          recordedChunks = [];
+          const supportedTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+          const mimeType = supportedTypes.find(type => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type));
+          mediaRecorder = mimeType
+            ? new MediaRecorder(recDestinationNode.stream, { mimeType })
+            : new MediaRecorder(recDestinationNode.stream);
+          mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+          mediaRecorder.onerror = (e) => console.warn('Помилка запису:', e.error || e);
+          mediaRecorder.onstop = saveRecording;
+          mediaRecorder.start(250);
+          isRecording = true;
+          recStartTime = Date.now();
+          document.getElementById('lblRecord').textContent = 'Зупинити';
+          document.getElementById('recDot').classList.remove('hidden');
+          document.getElementById('recTimer').classList.remove('hidden');
+          updateRecTimer();
+          recTimerInterval = setInterval(updateRecTimer, 1000);
+        } else {
+          if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+          isRecording = false;
+          document.getElementById('lblRecord').textContent = 'Запис';
+          document.getElementById('recDot').classList.add('hidden');
+          document.getElementById('recTimer').classList.add('hidden');
+          clearInterval(recTimerInterval);
+        }
+      } catch (err) {
+        console.error('Не вдалося записати аудіо:', err);
+      }
+    }
+
+    function updateRecTimer() {
+      const s = Math.floor((Date.now() - recStartTime) / 1000);
+      const m = Math.floor(s / 60).toString().padStart(2, '0');
+      const sec = (s % 60).toString().padStart(2, '0');
+      document.getElementById('recTimer').textContent = `${m}:${sec}`;
+    }
+
+    function saveRecording() {
+      if (!recordedChunks.length) {
+        alert('Запис порожній.');
+        return;
+      }
+      const mimeType = (mediaRecorder && mediaRecorder.mimeType) || recordedChunks[0].type || 'audio/webm';
+      const extension = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `spectrum_rec_${Date.now()}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+    }
+
+    function toggleFreeze() {
+      isFrozen = !isFrozen;
+      document.getElementById('lblFreeze').textContent = isFrozen ? "Відновити" : "Заморозити";
+    }
+    document.getElementById('btnFreeze').addEventListener('click', toggleFreeze);
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        toggleFreeze();
+      }
+    });
+
+    const inputFmin = document.getElementById('inputFmin');
+    const inputFmax = document.getElementById('inputFmax');
+
+    function syncFrequencyInputs() {
+      inputFmin.value = String(Math.round(fMin));
+      inputFmax.value = String(Math.round(fMax));
+    }
+
+    function resetFrequencyZoom() {
+      fMin = 20;
+      fMax = 20000;
+      syncFrequencyInputs();
+    }
+
+    inputFmin.addEventListener('change', () => {
+      const requested = Number.parseFloat(inputFmin.value);
+      fMin = Math.max(20, Math.min(Number.isFinite(requested) ? requested : 20, fMax - 10));
+      syncFrequencyInputs();
+    });
+    inputFmax.addEventListener('change', () => {
+      const requested = Number.parseFloat(inputFmax.value);
+      fMax = Math.min(22000, Math.max(Number.isFinite(requested) ? requested : 20000, fMin + 10));
+      syncFrequencyInputs();
+    });
+    document.getElementById('btnResetZoom').addEventListener('click', resetFrequencyZoom);
+
+    document.getElementById('selFftSize').addEventListener('change', (e) => {
+      if (analyser) analyser.fftSize = parseInt(e.target.value);
+    });
+    document.getElementById('sliderSmoothing').addEventListener('input', (e) => {
+      if (analyser) analyser.smoothingTimeConstant = parseFloat(e.target.value);
+    });
+
+    document.getElementById('selVizMode').addEventListener('change', (e) => {
+      vizMode = e.target.value;
+      const cv2d = document.getElementById('spectrumCanvas');
+      const c3d = document.getElementById('container3d');
+      const hHint2d = document.getElementById('hudHint2d');
+      const hHint3d = document.getElementById('hudHint3d');
+
+      if (vizMode === '3d_waterfall') {
+        if (typeof THREE === 'undefined') {
+          alert('3D-режим недоступний.');
+          vizMode = 'bars';
+          e.target.value = 'bars';
+          return;
+        }
+        cv2d.classList.add('hidden');
+        c3d.classList.remove('hidden');
+        hHint2d.classList.add('hidden');
+        hHint3d.classList.remove('hidden');
+
+        try {
+          if (!spectrum3DInstance) {
+            spectrum3DInstance = new Spectrum3D('container3d');
+          }
+          spectrum3DInstance.onWindowResize();
+        } catch (err) {
+          console.error('Не вдалося створити WebGL-візуалізацію:', err);
+          vizMode = 'bars';
+          e.target.value = 'bars';
+          cv2d.classList.remove('hidden');
+          c3d.classList.add('hidden');
+          hHint2d.classList.remove('hidden');
+          hHint3d.classList.add('hidden');
+          spectrum3DInstance = null;
+        }
+      } else {
+        cv2d.classList.remove('hidden');
+        c3d.classList.add('hidden');
+        hHint2d.classList.remove('hidden');
+        hHint3d.classList.add('hidden');
+      }
+    });
+
+    document.getElementById('selScale').addEventListener('change', (e) => scaleType = e.target.value);
+    document.getElementById('selPalette').addEventListener('change', (e) => paletteName = e.target.value);
+    document.getElementById('chkPeakHold').addEventListener('change', (e) => peakHoldEnabled = e.target.checked);
+
+    function resizeCanvas() {
+      const stage = document.getElementById('visualStage');
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      
+      const w = Math.floor(rect.width * dpr);
+      const h = Math.floor(rect.height * dpr);
+
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+
+      const cssW = Math.max(0, Math.floor(rect.width));
+      const cssH = Math.max(0, Math.floor(rect.height));
+
+      if (waterfallCanvas.width !== cssW || waterfallCanvas.height !== cssH) {
+        waterfallCanvas.width = cssW;
+        waterfallCanvas.height = cssH;
+        waterfallCtx.fillStyle = '#080c14';
+        waterfallCtx.fillRect(0, 0, cssW, cssH);
+      }
+
+      if (spectrum3DInstance) spectrum3DInstance.onWindowResize();
+    }
+    window.addEventListener('resize', resizeCanvas);
+    if (window.ResizeObserver) {
+      const canvasResizeObserver = new ResizeObserver(() => {
+        resizeCanvas();
+      });
+      canvasResizeObserver.observe(document.getElementById('visualStage'));
+      canvasResizeObserver.observe(document.getElementById('canvasContainer'));
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+      isHovering = true;
+    });
+    canvas.addEventListener('mouseleave', () => {
+      isHovering = false;
+      document.getElementById('tooltip').classList.add('hidden');
+    });
+
+    canvas.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      resetFrequencyZoom();
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      if (vizMode === 'oscilloscope' || vizMode === '3d_waterfall') return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      if (width <= 0) return;
+      const nyquist = audioCtx ? audioCtx.sampleRate / 2 : 22050;
+      const upperLimit = Math.max(30, Math.min(22000, nyquist));
+      const minLimit = 20;
+      const anchorRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / width));
+      const zoomFactor = e.deltaY > 0 ? 1.25 : 0.8;
+      const currentMin = Math.max(minLimit, Math.min(fMin, upperLimit - 10));
+      const currentMax = Math.max(currentMin + 10, Math.min(fMax, upperLimit));
+
+      if (scaleType === 'logarithmic') {
+        const logMin = Math.log(currentMin);
+        const logMax = Math.log(currentMax);
+        const span = Math.max(Math.log(1.05), Math.min(Math.log(upperLimit / minLimit), (logMax - logMin) * zoomFactor));
+        const anchor = logMin + anchorRatio * (logMax - logMin);
+        let nextMin = anchor - anchorRatio * span;
+        nextMin = Math.max(Math.log(minLimit), Math.min(nextMin, Math.log(upperLimit) - span));
+        fMin = Math.max(minLimit, Math.floor(Math.exp(nextMin)));
+        fMax = Math.min(upperLimit, Math.ceil(Math.exp(nextMin + span)));
+      } else {
+        const span = Math.max(10, Math.min(upperLimit - minLimit, (currentMax - currentMin) * zoomFactor));
+        const anchor = currentMin + anchorRatio * (currentMax - currentMin);
+        let nextMin = anchor - anchorRatio * span;
+        nextMin = Math.max(minLimit, Math.min(nextMin, upperLimit - span));
+        fMin = Math.floor(nextMin);
+        fMax = Math.ceil(nextMin + span);
+      }
+      if (fMax - fMin < 10) fMax = Math.min(upperLimit, fMin + 10);
+      syncFrequencyInputs();
+    }, { passive: false });
+
+    // Standby Idle Visualizer
+    function drawIdleState(width, height, nyquist) {
+      const bottomMargin = 20;
+      const usableHeight = height - bottomMargin;
+      const t = performance.now() * 0.002;
+
+      if (vizMode === 'oscilloscope') {
+        ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
+        ctx.stroke();
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.beginPath();
+        for (let x = 0; x <= width; x += 4) {
+          const y = height / 2 + Math.sin(x * 0.02 + t * 2) * 15 * Math.sin(x * 0.005);
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      } else if (vizMode === 'tuner') {
+        drawInstrumentTuner(width, height, 0, { note: '--', cents: '', centsVal: 0 });
+      } else if (vizMode === 'rta_1_3') {
+        const bandCount = RTA_1_3_FREQS.length;
+        const barWidth = width / bandCount;
+        RTA_1_3_FREQS.forEach((fc, idx) => {
+          const val = (Math.sin(idx * 0.5 + t) + 1) * 20 + 5;
+          const barHeight = (val / 255) * usableHeight;
+          const x = idx * barWidth;
+          ctx.fillStyle = ColorPalette(paletteName, 0.15);
+          ctx.fillRect(x + 2, usableHeight - barHeight, Math.max(1, barWidth - 4), barHeight);
+          ctx.fillStyle = 'rgba(156, 163, 175, 0.7)';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          const label = fc >= 1000 ? `${fc / 1000}k` : `${fc}`;
+          ctx.fillText(label, x + barWidth / 2, height - 6);
+        });
+        ctx.textAlign = 'left';
+      } else if (vizMode === 'waterfall') {
+        drawFrequencyAxes(width, height, nyquist);
+      } else {
+        const barCount = Math.max(1, Math.floor(width / 4));
+        const barWidth = width / barCount;
+        for (let i = 0; i < barCount; i++) {
+          const x = i * barWidth;
+          const val = (Math.sin(i * 0.15 + t) + Math.cos(i * 0.05 - t * 0.5) + 2) * 15;
+          const barHeight = Math.max(3, (val / 255) * usableHeight);
+          ctx.fillStyle = ColorPalette(paletteName, 0.12);
+          ctx.fillRect(x, usableHeight - barHeight, Math.max(1, barWidth - 1), barHeight);
+        }
+        drawFrequencyAxes(width, height, nyquist);
+      }
+
+      ctx.save();
+      const bannerW = Math.min(width - 20, 440);
+      ctx.fillStyle = 'rgba(8, 12, 20, 0.85)';
+      ctx.fillRect(width / 2 - bannerW / 2, height / 2 - 20, bannerW, 36);
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(width / 2 - bannerW / 2, height / 2 - 20, bannerW, 36);
+
+      ctx.fillStyle = '#00f0ff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('► Натисніть «Старт Аудіо» або оберіть джерело (Мікрофон / Файл / Генератор)', width / 2, height / 2 - 2);
+      ctx.restore();
+    }
+
+    // Main Render Loop
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+
+      const now = performance.now();
+      frameCount++;
+      if (now - lastFrameTime >= 1000) {
+        fps = frameCount; frameCount = 0; lastFrameTime = now;
+        document.getElementById('hudFps').textContent = fps;
+      }
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const stage = document.getElementById('visualStage');
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      if (width <= 0 || height <= 0) return;
+
+      const nyquist = audioCtx ? audioCtx.sampleRate / 2 : 22050;
+
+      if (analyser) {
+        const bufferLength = analyser.frequencyBinCount;
+        const fftSize = analyser.fftSize;
+
+        if (freqData.length !== bufferLength) {
+          freqData = new Uint8Array(bufferLength);
+          floatFreqData = new Float32Array(bufferLength);
+          peakData = new Array(bufferLength).fill(0);
+        }
+        if (floatFreqData.length !== bufferLength) floatFreqData = new Float32Array(bufferLength);
+        if (timeData.length !== fftSize) {
+          timeData = new Uint8Array(fftSize);
+          timeData.fill(128);
+        }
+
+        if (!isFrozen) {
+          analyser.getByteFrequencyData(freqData);
+          analyser.getFloatFrequencyData(floatFreqData);
+          analyser.getByteTimeDomainData(timeData);
+        }
+
+        let maxByteVal = -1, maxBinIndex = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          if (freqData[i] > maxByteVal) { maxByteVal = freqData[i]; maxBinIndex = i; }
+          if (peakData[i] === undefined) peakData[i] = 0;
+          if (freqData[i] >= peakData[i]) peakData[i] = freqData[i];
+          else peakData[i] = Math.max(0, peakData[i] - 1.5);
+        }
+
+        let exactPeakFreq = 0;
+        if (maxByteVal > 15 && maxBinIndex > 0 && maxBinIndex < bufferLength - 1) {
+          const curve = floatFreqData;
+          const useFloat = Number.isFinite(curve[maxBinIndex - 1]) && Number.isFinite(curve[maxBinIndex]) && Number.isFinite(curve[maxBinIndex + 1]);
+          const alpha = useFloat ? curve[maxBinIndex - 1] : freqData[maxBinIndex - 1];
+          const beta = useFloat ? curve[maxBinIndex] : freqData[maxBinIndex];
+          const gamma = useFloat ? curve[maxBinIndex + 1] : freqData[maxBinIndex + 1];
+          const denom = alpha - 2 * beta + gamma;
+          const delta = Math.abs(denom) > 1e-12 ? 0.5 * (alpha - gamma) / denom : 0;
+          exactPeakFreq = (maxBinIndex + Math.max(-0.5, Math.min(0.5, delta))) * (nyquist / bufferLength);
+        } else {
+          exactPeakFreq = maxByteVal > 15 ? (maxBinIndex / bufferLength) * nyquist : 0;
+        }
+
+        calculateHarmonicsAndTHD(exactPeakFreq, bufferLength, nyquist);
+        detectBeatAndBPM(now, bufferLength, nyquist);
+        sendHardwareLevels(bufferLength);
+
+        const detailedNote = freqToNoteDetailed(exactPeakFreq);
+        document.getElementById('hudPeakFreq').textContent = `${Math.round(exactPeakFreq)} Гц`;
+        document.getElementById('hudNote').textContent = detailedNote.full;
+        const peakDb = Number.isFinite(floatFreqData[maxBinIndex]) ? floatFreqData[maxBinIndex] : byteToDb(maxByteVal);
+        document.getElementById('hudPeakDb').textContent = formatDb(peakDb);
+      }
+
+      if (vizMode === '3d_waterfall') {
+        if (!spectrum3DInstance && typeof THREE !== 'undefined') {
+          try {
+            spectrum3DInstance = new Spectrum3D('container3d');
+          } catch (e) {
+            console.error('Failed to instantiate 3D spectrum:', e);
+          }
+        }
+        if (spectrum3DInstance) {
+          spectrum3DInstance.onWindowResize();
+          spectrum3DInstance.update(freqData, nyquist);
+        }
+        return;
+      }
+
+      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+        resizeCanvas();
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#080c14';
+      ctx.fillRect(0, 0, width, height);
+
+      if (!analyser) {
+        drawIdleState(width, height, nyquist);
+        return;
+      }
+
+      const bufferLength = analyser.frequencyBinCount;
+
+      try {
+        if (vizMode === 'bars') {
+          drawFrequencyBars(width, height, bufferLength, nyquist);
+          drawFrequencyAxes(width, height, nyquist);
+        } else if (vizMode === 'line') {
+          drawFrequencyLine(width, height, bufferLength, nyquist);
+          drawFrequencyAxes(width, height, nyquist);
+        } else if (vizMode === 'rta_1_3') {
+          drawRTA13Octaves(width, height, bufferLength, nyquist);
+        } else if (vizMode === 'waterfall') {
+          drawWaterfall(width, height, bufferLength, nyquist);
+        } else if (vizMode === 'oscilloscope') {
+          drawOscilloscope(width, height);
+        } else if (vizMode === 'tuner') {
+          const maxByteVal = Math.max(...freqData);
+          const maxBinIndex = freqData.indexOf(maxByteVal);
+          const exactPeakFreq = maxByteVal > 15 ? (maxBinIndex / bufferLength) * nyquist : 0;
+          drawInstrumentTuner(width, height, exactPeakFreq, freqToNoteDetailed(exactPeakFreq));
+        }
+
+        if (isHovering && (vizMode === 'bars' || vizMode === 'line' || vizMode === 'rta_1_3')) {
+          renderHoverTooltip(width, height, bufferLength, nyquist);
+        }
+      } catch (renderError) {
+        console.error('Помилка візуалізації:', renderError);
+      }
+    }
+
+    function byteToDb(value) {
+      if (!analyser) return -100 + (Math.max(0, Math.min(255, value)) / 255) * 70;
+      return analyser.minDecibels + (Math.max(0, Math.min(255, value)) / 255) * (analyser.maxDecibels - analyser.minDecibels);
+    }
+
+    function formatDb(value) {
+      return Number.isFinite(value) ? `${value.toFixed(1)} dB` : '-inf dB';
+    }
+
+    function calculateHarmonicsAndTHD(f0, bufferLen, nyquist) {
+      const f0El = document.getElementById('dspF0');
+      const thdEl = document.getElementById('dspTHD');
+      const snrEl = document.getElementById('dspSNR');
+      const clearValues = () => { f0El.textContent = '0 Гц'; thdEl.textContent = '—'; snrEl.textContent = '—'; };
+      if (!Number.isFinite(f0) || f0 < 30 || f0 > Math.min(10000, nyquist / 4)) {
+        clearValues();
+        return;
+      }
+
+      const getLinearAmp = (frequency) => {
+        const bin = Math.round((frequency / nyquist) * bufferLen);
+        if (bin <= 0 || bin >= bufferLen) return 0;
+        const db = floatFreqData[bin];
+        return Number.isFinite(db) ? Math.pow(10, db / 20) : 0;
+      };
+
+      const harmonics = [1, 2, 3, 4].map(n => getLinearAmp(f0 * n));
+      const [v1, v2, v3, v4] = harmonics;
+      if (!(v1 > 1e-7)) {
+        clearValues();
+        return;
+      }
+
+      const thd = (Math.sqrt(v2 * v2 + v3 * v3 + v4 * v4) / v1) * 100;
+      const excludedBins = new Set();
+      for (let n = 1; n <= 4; n++) {
+        const center = Math.round((f0 * n / nyquist) * bufferLen);
+        for (let offset = -2; offset <= 2; offset++) {
+          if (center + offset >= 0 && center + offset < bufferLen) excludedBins.add(center + offset);
+        }
+      }
+      let noisePower = 0;
+      let noiseCount = 0;
+      for (let i = 1; i < bufferLen; i++) {
+        if (excludedBins.has(i)) continue;
+        const db = floatFreqData[i];
+        if (!Number.isFinite(db)) continue;
+        const amp = Math.pow(10, db / 20);
+        noisePower += amp * amp;
+        noiseCount++;
+      }
+      const noiseRms = noiseCount ? Math.sqrt(noisePower / noiseCount) : 0;
+      const snr = noiseRms > 0 ? 20 * Math.log10(v1 / noiseRms) : Infinity;
+
+      f0El.textContent = `${Math.round(f0)} Гц`;
+      thdEl.textContent = Number.isFinite(thd) ? `${thd.toFixed(2)} %` : '—';
+      snrEl.textContent = Number.isFinite(snr) ? `${snr.toFixed(1)} dB` : '∞ dB';
+    }
+
+    function detectBeatAndBPM(now, bufferLen, nyquist) {
+      const maxBassBin = Math.floor((150 / nyquist) * bufferLen);
+      let bassEnergy = 0;
+      for (let i = 0; i <= maxBassBin; i++) bassEnergy += freqData[i] || 0;
+      bassEnergy /= (maxBassBin + 1);
+
+      bpmEnergyHistory.push(bassEnergy);
+      if (bpmEnergyHistory.length > 30) bpmEnergyHistory.shift();
+
+      const avgEnergy = bpmEnergyHistory.reduce((a, b) => a + b, 0) / bpmEnergyHistory.length;
+      const dot = document.getElementById('bpmPulseDot');
+
+      if (bassEnergy > avgEnergy * 1.35 && bassEnergy > 60 && (now - lastBeatTime) > 300) {
+        const deltaMs = now - lastBeatTime;
+        lastBeatTime = now;
+        currentBPM = Math.round(60000 / deltaMs);
+        if (currentBPM >= 60 && currentBPM <= 200) {
+          document.getElementById('dspBPM').textContent = `${currentBPM} BPM`;
+        }
+        dot.style.opacity = '1';
+        dot.style.transform = 'scale(1.3)';
+      } else {
+        dot.style.opacity = '0.3';
+        dot.style.transform = 'scale(1)';
+      }
+    }
+
+    function getFrequencyBounds(nyquist) {
+      const upper = Math.max(21, Number.isFinite(nyquist) ? nyquist : 22050);
+      const min = Math.min(Math.max(20, fMin), upper - 1);
+      const max = Math.max(min + 1, Math.min(upper, fMax));
+      return { min, max };
+    }
+
+    function getFreqFromX(x, width, nyquist) {
+      const { min, max } = getFrequencyBounds(nyquist);
+      if (!Number.isFinite(width) || width <= 0) return min;
+      const position = Math.max(0, Math.min(1, x / width));
+      return scaleType === 'logarithmic'
+        ? min * Math.pow(max / min, position)
+        : min + position * (max - min);
+    }
+
+    function getXFromFreq(freq, width, nyquist) {
+      const { min, max } = getFrequencyBounds(nyquist);
+      if (freq <= min) return 0;
+      if (freq >= max) return width;
+      return scaleType === 'logarithmic'
+        ? (Math.log(freq / min) / Math.log(max / min)) * width
+        : ((freq - min) / (max - min)) * width;
+    }
+
+    function drawFrequencyBars(width, height, bufferLength, nyquist) {
+      const bottomMargin = 20;
+      const usableHeight = height - bottomMargin;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(71, 85, 105, 0.42)';
+      ctx.lineWidth = 1;
+      for (let row = 1; row <= 4; row++) {
+        const y = Math.round((usableHeight * row) / 5) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      const bufLen = bufferLength > 0 ? bufferLength : 256;
+      const barCount = Math.max(1, Math.floor(Math.min(width / 3, bufLen)));
+      const barWidth = width / barCount;
+
+      for (let i = 0; i < barCount; i++) {
+        const x = i * barWidth;
+        const freq = getFreqFromX(x + barWidth / 2, width, nyquist);
+        const binIndex = Math.min(bufLen - 1, Math.floor((freq / nyquist) * bufLen));
+        const val = (freqData.length > 0) ? (freqData[binIndex] || 0) : 0;
+        const peakVal = (peakData.length > 0) ? (peakData[binIndex] || 0) : 0;
+
+        const barHeight = Math.max(2, (val / 255) * usableHeight);
+        ctx.fillStyle = ColorPalette(paletteName, Math.max(0.05, val / 255));
+        ctx.fillRect(x, usableHeight - barHeight, Math.max(1, barWidth - 1), barHeight);
+
+        if (peakHoldEnabled && peakVal > 0) {
+          const peakY = usableHeight - (peakVal / 255) * usableHeight;
+          ctx.fillStyle = '#00f0ff';
+          ctx.fillRect(x, peakY - 2, Math.max(1, barWidth - 1), 2);
+        }
+      }
+    }
+
+    function drawFrequencyLine(width, height, bufferLength, nyquist) {
+      const bottomMargin = 20;
+      const usableHeight = height - bottomMargin;
+      const bufLen = bufferLength > 0 ? bufferLength : 256;
+
+      const gradient = ctx.createLinearGradient(0, usableHeight, 0, 0);
+      gradient.addColorStop(0, 'rgba(0, 240, 255, 0.05)');
+      gradient.addColorStop(1, 'rgba(0, 240, 255, 0.4)');
+
+      ctx.beginPath();
+      ctx.moveTo(0, usableHeight);
+
+      for (let x = 0; x <= width; x += 2) {
+        const freq = getFreqFromX(x, width, nyquist);
+        const binIndex = Math.min(bufLen - 1, Math.floor((freq / nyquist) * bufLen));
+        const val = (freqData.length > 0) ? (freqData[binIndex] || 0) : 0;
+        const y = usableHeight - (val / 255) * usableHeight;
+        ctx.lineTo(x, y);
+      }
+
+      ctx.lineTo(width, usableHeight);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      ctx.beginPath();
+      for (let x = 0; x <= width; x += 2) {
+        const freq = getFreqFromX(x, width, nyquist);
+        const binIndex = Math.min(bufLen - 1, Math.floor((freq / nyquist) * bufLen));
+        const val = (freqData.length > 0) ? (freqData[binIndex] || 0) : 0;
+        const y = usableHeight - (val / 255) * usableHeight;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#00f0ff';
+      ctx.stroke();
+    }
+
+    function drawRTA13Octaves(width, height, bufferLength, nyquist) {
+      const bandCount = RTA_1_3_FREQS.length;
+      const barWidth = width / bandCount;
+      const bufLen = bufferLength > 0 ? bufferLength : 256;
+      const usableHeight = height - 25;
+
+      RTA_1_3_FREQS.forEach((fc, idx) => {
+        const fl = fc * Math.pow(2, -1 / 6);
+        const fu = fc * Math.pow(2, 1 / 6);
+
+        const binStart = Math.max(0, Math.floor((fl / nyquist) * bufLen));
+        const binEnd = Math.min(bufLen - 1, Math.ceil((fu / nyquist) * bufLen));
+
+        let maxVal = 0;
+        if (freqData.length > 0) {
+          for (let b = binStart; b <= binEnd; b++) {
+            if (freqData[b] > maxVal) maxVal = freqData[b];
+          }
+        }
+
+        const barHeight = Math.max(2, (maxVal / 255) * usableHeight);
+        const x = idx * barWidth;
+
+        ctx.fillStyle = ColorPalette(paletteName, Math.max(0.08, maxVal / 255));
+        ctx.fillRect(x + 2, usableHeight - barHeight, Math.max(1, barWidth - 4), barHeight);
+
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(x + 2, usableHeight - barHeight - 2, Math.max(1, barWidth - 4), 2);
+
+        ctx.fillStyle = 'rgba(156, 163, 175, 0.7)';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        const label = fc >= 1000 ? `${fc / 1000}k` : `${fc}`;
+        ctx.fillText(label, x + barWidth / 2, height - 8);
+      });
+      ctx.textAlign = 'left';
+    }
+
+    function drawWaterfall(width, height, bufferLength, nyquist) {
+      const wfWidth = Math.max(1, Math.floor(width));
+      const wfHeight = Math.max(1, Math.floor(height));
+      if (waterfallCanvas.width !== wfWidth || waterfallCanvas.height !== wfHeight) {
+        waterfallCanvas.width = wfWidth;
+        waterfallCanvas.height = wfHeight;
+        waterfallCtx.fillStyle = '#080c14';
+        waterfallCtx.fillRect(0, 0, wfWidth, wfHeight);
+      }
+
+      if (!isFrozen && bufferLength > 0) {
+        if (wfHeight > 2) waterfallCtx.drawImage(waterfallCanvas, 0, 0, wfWidth, wfHeight - 2, 0, 2, wfWidth, wfHeight - 2);
+
+        const imgData = waterfallCtx.createImageData(wfWidth, Math.min(2, wfHeight));
+        for (let x = 0; x < wfWidth; x++) {
+          const freq = getFreqFromX(x, wfWidth, nyquist);
+          const binIndex = Math.min(bufferLength - 1, Math.floor((freq / nyquist) * bufferLength));
+          const val = freqData[binIndex] || 0;
+
+          const colorStr = ColorPalette(paletteName, val / 255);
+          let r = 0, g = 0, b = 0;
+
+          if (colorStr.startsWith('hsl')) {
+            const hMatch = colorStr.match(/hsl\(([\d.]+),\s*([\d.]+)%,\s*([\d.]+)%\)/);
+            if (hMatch) {
+              const h = parseFloat(hMatch[1]) / 360;
+              const s = parseFloat(hMatch[2]) / 100;
+              const l = parseFloat(hMatch[3]) / 100;
+              const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+              const p = 2 * l - q;
+              const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1; if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+              };
+              r = Math.round(hue2rgb(p, q, h + 1/3) * 255);
+              g = Math.round(hue2rgb(p, q, h) * 255);
+              b = Math.round(hue2rgb(p, q, h - 1/3) * 255);
+            }
+          } else {
+            const parts = colorStr.match(/\d+/g);
+            if (parts) { r = parseInt(parts[0]); g = parseInt(parts[1]); b = parseInt(parts[2]); }
+          }
+
+          for (let row = 0; row < Math.min(2, wfHeight); row++) {
+            const idx = (row * wfWidth + x) * 4;
+            imgData.data[idx] = r;
+            imgData.data[idx + 1] = g;
+            imgData.data[idx + 2] = b;
+            imgData.data[idx + 3] = 255;
+          }
+        }
+        waterfallCtx.putImageData(imgData, 0, 0);
+      }
+
+      ctx.drawImage(waterfallCanvas, 0, 0, wfWidth, wfHeight, 0, 0, width, height);
+    }
+
+    function drawOscilloscope(width, height) {
+      ctx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
+      ctx.moveTo(0, height / 4); ctx.lineTo(width, height / 4);
+      ctx.moveTo(0, (3 * height) / 4); ctx.lineTo(width, (3 * height) / 4);
+      ctx.stroke();
+
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#00f0ff';
+      ctx.shadowColor = '#00f0ff';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+
+      const len = timeData.length || 1024;
+      let startIdx = 0;
+
+      if (timeData.length > 0) {
+        for (let i = 1; i < len / 2; i++) {
+          if (timeData[i - 1] < 128 && timeData[i] >= 128) {
+            startIdx = i;
+            break;
+          }
+        }
+      }
+
+      const drawLength = Math.min(len - startIdx, 1024);
+      const sliceWidth = width / drawLength;
+
+      for (let i = 0; i < drawLength; i++) {
+        const rawVal = timeData.length > 0 ? timeData[startIdx + i] : 128;
+        const norm = (rawVal - 128) / 128.0;
+        const y = height / 2 - norm * (height / 2 * 0.85);
+        const x = i * sliceWidth;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawInstrumentTuner(width, height, peakFreq, noteData) {
+      const centerX = width / 2;
+      const centerY = height / 2 + 30;
+      const radius = Math.min(width, height) * 0.38;
+
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+      ctx.stroke();
+
+      const cents = noteData.centsVal || 0;
+      const angleOffset = (cents / 50) * (Math.PI / 4);
+      const needleAngle = Math.PI * 1.5 + angleOffset;
+
+      const inTune = Math.abs(cents) <= 5;
+      const closeTune = Math.abs(cents) <= 15;
+      const activeColor = (peakFreq > 0)
+        ? (inTune ? '#39ff14' : closeTune ? '#ffe600' : '#ff007f')
+        : '#00f0ff';
+
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, Math.PI * 1.5, needleAngle, cents < 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = activeColor;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(centerX + Math.cos(needleAngle) * (radius - 15), centerY + Math.sin(needleAngle) * (radius - 15));
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = activeColor;
+      ctx.font = 'bold 52px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(noteData.note || '--', centerX, centerY - 35);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '15px monospace';
+      ctx.fillText(`${Math.round(peakFreq)} Hz  (${noteData.cents || '0¢'})`, centerX, centerY + 28);
+      ctx.textAlign = 'left';
+    }
+
+    function drawFrequencyAxes(width, height, nyquist) {
+      ctx.fillStyle = 'rgba(156, 163, 175, 0.4)';
+      ctx.font = '10px monospace';
+      [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(f => {
+        if (f >= fMin && f <= fMax && f < nyquist) {
+          const x = getXFromFreq(f, width, nyquist);
+          if (x > 0 && x < width) {
+            ctx.strokeStyle = 'rgba(30, 41, 59, 0.8)';
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+            ctx.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 2, height - 6);
+          }
+        }
+      });
+    }
+
+    function renderHoverTooltip(width, height, bufferLength, nyquist) {
+      const hoveredFreq = Math.round(getFreqFromX(mouseX, width, nyquist));
+      const binIndex = Math.min(bufferLength - 1, Math.max(0, Math.floor((hoveredFreq / nyquist) * bufferLength)));
+      const dbVal = floatFreqData.length && Number.isFinite(floatFreqData[binIndex])
+        ? floatFreqData[binIndex].toFixed(1)
+        : byteToDb(freqData[binIndex] || 0).toFixed(1);
+      const detailedNote = freqToNoteDetailed(hoveredFreq);
+
+      const tt = document.getElementById('tooltip');
+      tt.classList.remove('hidden');
+      tt.style.left = `${Math.min(mouseX + 15, width - 150)}px`;
+      tt.style.top = `${Math.min(mouseY + 15, height - 80)}px`;
+
+      document.getElementById('ttFreq').textContent = `${hoveredFreq} Гц`;
+      document.getElementById('ttNote').textContent = detailedNote.full;
+      document.getElementById('ttDb').textContent = `${dbVal} dBFS`;
+    }
+
+    function sendHardwareLevels(bufferLen) {
+      if (!serialWriter && !webSocketConn) return;
+      const now = performance.now();
+      if (now - lastHardwareSendTime < 50) return;
+      lastHardwareSendTime = now;
+
+      const nyquist = audioCtx ? audioCtx.sampleRate / 2 : 22050;
+      const bassEnd = Math.max(1, Math.min(bufferLen, Math.floor((250 / nyquist) * bufferLen)));
+      const midEnd = Math.max(bassEnd + 1, Math.min(bufferLen, Math.floor((2500 / nyquist) * bufferLen)));
+      let bass = 0, mid = 0, treble = 0;
+      for (let i = 0; i < bassEnd; i++) bass += freqData[i] || 0;
+      for (let i = bassEnd; i < midEnd; i++) mid += freqData[i] || 0;
+      for (let i = midEnd; i < bufferLen; i++) treble += freqData[i] || 0;
+
+      const b = Math.round(bass / Math.max(1, bassEnd));
+      const m = Math.round(mid / Math.max(1, midEnd - bassEnd));
+      const t = Math.round(treble / Math.max(1, bufferLen - midEnd));
+
+      if (serialWriter) {
+        serialWriter.write(new Uint8Array([255, b, m, t])).catch(err => {
+          console.warn('Помилка передавання через Serial:', err);
+        });
+      }
+      if (webSocketConn && webSocketConn.readyState === WebSocket.OPEN) {
+        webSocketConn.send(JSON.stringify({ bass: b, mid: m, treble: t, bpm: currentBPM }));
+      }
+    }
+
+    document.getElementById('btnOpenSerial').addEventListener('click', () => document.getElementById('modalSerial').classList.remove('hidden'));
+    document.getElementById('btnCloseSerial').addEventListener('click', () => document.getElementById('modalSerial').classList.add('hidden'));
+
+    document.getElementById('btnConnectSerial').addEventListener('click', async () => {
+      if (!('serial' in navigator)) { alert('Web Serial API не підтримується цим WebView.'); return; }
+      try {
+        if (serialWriter) {
+          try { await serialWriter.releaseLock(); } catch (e) {}
+          serialWriter = null;
+        }
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 115200 });
+        if (!serialPort.writable) throw new Error('Пристрій не має доступного каналу передавання.');
+        serialWriter = serialPort.writable.getWriter();
+        document.getElementById('ledStatusDot').className = 'w-2 h-2 rounded-full bg-cyber-green';
+      } catch (e) {
+        console.error('Помилка Serial:', e);
+        alert(e.message || 'Не вдалося підключити Serial-пристрій.');
+      }
+    });
+
+    document.getElementById('btnConnectWS').addEventListener('click', () => {
+      const url = document.getElementById('inputWsUrl').value.trim();
+      if (!/^wss?:\/\//i.test(url)) {
+        alert('Адреса WebSocket має починатися з ws:// або wss://.');
+        return;
+      }
+      try {
+        if (webSocketConn && (webSocketConn.readyState === WebSocket.OPEN || webSocketConn.readyState === WebSocket.CONNECTING)) webSocketConn.close();
+        webSocketConn = new WebSocket(url);
+        webSocketConn.onopen = () => { document.getElementById('ledStatusDot').className = 'w-2 h-2 rounded-full bg-cyber-cyan'; };
+        webSocketConn.onerror = (event) => { console.warn('Помилка WebSocket:', event); document.getElementById('ledStatusDot').className = 'w-2 h-2 rounded-full bg-red-500'; };
+        webSocketConn.onclose = () => { if (!serialWriter) document.getElementById('ledStatusDot').className = 'w-2 h-2 rounded-full bg-gray-600'; };
+      } catch (err) {
+        console.error('Не вдалося створити WebSocket:', err);
+        alert('Не вдалося підключитися.');
+      }
+    });
+
+    // Data Export Engine
+    document.getElementById('btnOpenExport').addEventListener('click', () => {
+      document.getElementById('modalExport').classList.remove('hidden');
+    });
+    document.getElementById('btnCloseExport').addEventListener('click', () => {
+      document.getElementById('modalExport').classList.add('hidden');
+      document.getElementById('exportPreviewArea').classList.add('hidden');
+    });
+
+    function getExportData() {
+      const nyquist = audioCtx ? audioCtx.sampleRate / 2 : 22050;
+      const len = freqData.length || 1024;
+      const data = [];
+      for (let i = 0; i < len; i++) {
+        const val = freqData.length ? freqData[i] : 0;
+        const f = Math.round((i / len) * nyquist);
+        const measuredDb = floatFreqData.length && Number.isFinite(floatFreqData[i]) ? floatFreqData[i] : byteToDb(val);
+        const db = parseFloat(measuredDb.toFixed(1));
+        data.push({ f, db });
+      }
+      return data;
+    }
+
+    function showExportPreview(text, isImage = false, imgUrl = '') {
+      const area = document.getElementById('exportPreviewArea');
+      const textarea = document.getElementById('exportTextarea');
+      const imgContainer = document.getElementById('exportImgContainer');
+      const imgPreview = document.getElementById('exportImgPreview');
+      const btnCopy = document.getElementById('btnCopyExport');
+      const statusText = document.getElementById('exportStatusText');
+
+      area.classList.remove('hidden');
+      statusText.textContent = '✓ Дані підготовлено';
+
+      if (isImage) {
+        textarea.classList.add('hidden');
+        btnCopy.classList.add('hidden');
+        imgContainer.classList.remove('hidden');
+        imgPreview.src = imgUrl;
+      } else {
+        imgContainer.classList.add('hidden');
+        textarea.classList.remove('hidden');
+        btnCopy.classList.remove('hidden');
+        textarea.value = text;
+      }
+    }
+
+    document.getElementById('btnCopyExport').addEventListener('click', () => {
+      const textarea = document.getElementById('exportTextarea');
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        document.execCommand('copy');
+        const statusText = document.getElementById('exportStatusText');
+        statusText.textContent = '✓ Скопійовано!';
+        setTimeout(() => { statusText.textContent = '✓ Дані підготовлено'; }, 2000);
+      } catch (e) {
+        console.error("Copy failed:", e);
+      }
+    });
+
+    document.getElementById('btnExportCSV').addEventListener('click', () => {
+      const data = getExportData();
+      let csv = "Frequency_Hz,Amplitude_dB\n";
+      data.forEach(d => { csv += `${d.f},${d.db}\n`; });
+      downloadFile(csv, 'text/csv', `spectrum_export_${Date.now()}.csv`);
+      showExportPreview(csv);
+    });
+
+    document.getElementById('btnExportJSON').addEventListener('click', () => {
+      const data = getExportData();
+      const json = JSON.stringify(data, null, 2);
+      downloadFile(json, 'application/json', `spectrum_export_${Date.now()}.json`);
+      showExportPreview(json);
+    });
+
+    document.getElementById('btnExportPNG').addEventListener('click', () => {
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        downloadFile(dataUrl, 'image/png', `spectrum_snapshot_${Date.now()}.png`, true);
+        showExportPreview('', true, dataUrl);
+      } catch (e) {
+        console.error("PNG export error:", e);
+      }
+    });
+
+    document.getElementById('btnExportSVG').addEventListener('click', () => {
+      const width = canvas.width || 800, height = canvas.height || 400;
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" style="background:#080c14;">`;
+      svg += `<path d="M 0 ${height} `;
+      const len = freqData.length || 1024;
+      for (let x = 0; x < width; x += 5) {
+        const bin = Math.floor((x / width) * len);
+        const val = freqData.length ? freqData[bin] : 0;
+        const y = height - (val / 255) * height;
+        svg += `L ${x} ${y} `;
+      }
+      svg += `L ${width} ${height} Z" fill="#00f0ff" opacity="0.6"/>`;
+      svg += `</svg>`;
+
+      downloadFile(svg, 'image/svg+xml', `spectrum_vector_${Date.now()}.svg`);
+      showExportPreview(svg);
+    });
+
+    function downloadFile(content, mime, name, isBase64 = false) {
+      try {
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        if (isBase64) {
+          a.href = content;
+        } else {
+          const blob = new Blob([content], { type: mime });
+          a.href = URL.createObjectURL(blob);
+        }
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          if (!isBase64) URL.revokeObjectURL(a.href);
+        }, 1000);
+      } catch (e) {
+        console.warn("Direct download failed or blocked in WebView:", e);
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (currentAudioObjectUrl) URL.revokeObjectURL(currentAudioObjectUrl);
+      if (micStream) micStream.getTracks().forEach(track => track.stop());
+      if (webSocketConn && webSocketConn.readyState < WebSocket.CLOSING) webSocketConn.close();
+      if (serialWriter) {
+        try { serialWriter.releaseLock(); } catch (e) {}
+      }
+      if (spectrum3DInstance && spectrum3DInstance.renderer) spectrum3DInstance.renderer.dispose();
+    });
+
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      if (typeof ResizeObserver !== 'undefined') {
+        const layoutObserver = new ResizeObserver(resizeCanvas);
+        layoutObserver.observe(document.getElementById('canvasContainer'));
+        layoutObserver.observe(document.getElementById('statusHud'));
+      }
+      requestAnimationFrame(renderLoop);
+    });
+
+  </script>
+</body>
+</html>

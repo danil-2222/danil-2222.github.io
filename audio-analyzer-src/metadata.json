@@ -1,0 +1,8 @@
+{
+  "name": "Audio Spectrum Analyzer PRO ULTRA",
+  "description": "Високопродуктивний аналізатор аудіоспектра в реальному часі з 2D/3D візуалізацією, параметричними фільтрами, генератором сигналів, THD/SNR та повною реалізацією на Android Java.",
+  "requestFramePermissions": [
+    "android.permission.RECORD_AUDIO"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
