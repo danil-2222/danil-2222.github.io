@@ -283,4 +283,96 @@ public class Shots {
         run(2000);
         shot(a, "20_hints_noise");
     }
+
+    static void progress(MainActivity a, String idName, int value) {
+        int id = a.getResources().getIdentifier(idName, "id", a.getPackageName());
+        ((android.widget.SeekBar) a.findViewById(id)).setProgress(value);
+        shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    /** Mono 48 kHz: a clap (short burst) followed by an exponentially decaying noise tail, RT60 = 0.7 s. */
+    static File makeClapWav() throws Exception {
+        int rate = 48000, n = rate * 3;
+        java.util.Random rnd = new java.util.Random(3);
+        java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+        for (int i = 0; i < n; i++) {
+            double t = (double) i / rate, v = (rnd.nextDouble() * 2 - 1) * 0.0003;
+            double since = t - 0.6;
+            if (since >= 0) v += (rnd.nextDouble() * 2 - 1) * 0.6 * Math.pow(10, -3 * since / 0.7);
+            short sv = (short) Math.max(-32768, Math.min(32767, v * 32767));
+            data.write(sv & 0xFF); data.write((sv >> 8) & 0xFF);
+        }
+        byte[] pcm = data.toByteArray();
+        java.nio.ByteBuffer h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        h.put("RIFF".getBytes()).putInt(36 + pcm.length).put("WAVE".getBytes());
+        h.put("fmt ".getBytes()).putInt(16).putShort((short) 1).putShort((short) 1).putInt(rate)
+                .putInt(rate * 2).putShort((short) 2).putShort((short) 16);
+        h.put("data".getBytes()).putInt(pcm.length);
+        File f = new File(OUT, "clap.wav");
+        OUT.mkdirs();
+        FileOutputStream o = new FileOutputStream(f);
+        o.write(h.array());
+        o.write(pcm);
+        o.close();
+        return f;
+    }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void lab() throws Exception {
+        MainActivity a = setup();
+        Object engine = getField(a, "engine");
+        click(a, "tabLearn");
+
+        click(a, "btnExp7");
+        select(a, "spinSource", 1);
+        float[] melody = {261.63f, 293.66f, 329.63f, 349.23f, 392f, 392f, 440f, 392f};
+        for (float f : melody) { gen("SINE", f, 0.4f); run(600); }
+        gen("SINE", 349.23f * 1.012f, 0.4f); // slightly sharp
+        run(700);
+        shot(a, "21_pitch");
+
+        click(a, "btnExp9");
+        run(1200);
+        shot(a, "22_intervals_fifth");
+        select(a, "spinInterval", 1);
+        run(800);
+        shot(a, "23_intervals_second");
+        select(a, "spinInterval", 0);
+        progress(a, "seekDetune", 20);
+        run(800);
+        shot(a, "24_intervals_beats");
+
+        click(a, "btnExp10");
+        select(a, "spinSource", 1);
+        click(a, "btnPresetSaw");
+        run(2000);
+        shot(a, "25_air");
+
+        click(a, "btnExp12");
+        run(300);
+        shot(a, "26_sampling_ok");
+        progress(a, "seekSampleSig", 860); // ~7.9 kHz at fs = 8 kHz
+        run(300);
+        shot(a, "27_sampling_alias");
+
+        File wav = makeWav();
+        click(a, "btnExp8");
+        call(a, "loadFile", new Class<?>[]{android.net.Uri.class}, android.net.Uri.fromFile(wav));
+        run(1500);
+        call(engine, "seek", new Class<?>[]{int.class}, (int) (44100 * 4.3));
+        call(engine, "setPlaying", new Class<?>[]{boolean.class}, true);
+        run(1200);
+        call(engine, "setPlaying", new Class<?>[]{boolean.class}, false);
+        run(300);
+        shot(a, "28_chroma_chord");
+        click(a, "btnTapeClose");
+
+        File clap = makeClapWav();
+        click(a, "btnExp11");
+        call(a, "loadFile", new Class<?>[]{android.net.Uri.class}, android.net.Uri.fromFile(clap));
+        run(1500);
+        call(engine, "setPlaying", new Class<?>[]{boolean.class}, true);
+        run(3500);
+        shot(a, "29_echo");
+    }
 }

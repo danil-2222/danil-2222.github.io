@@ -26,7 +26,7 @@ import java.util.Locale;
  * pan the frequency axis, double tap resets the zoom, long press toggles full screen.
  */
 public class VisualizerView extends View {
-    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER }
+    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER, PITCH, CHROMA, INTERVALS, AIR, ECHO, SAMPLING }
 
     public interface Callbacks {
         void onToggleFullscreen();
@@ -116,6 +116,7 @@ public class VisualizerView extends View {
     private float epiF0;
     private boolean epiValid;
     private final long animStart = System.currentTimeMillis();
+    private LessonRenderer lesson;
     private static final int[] HARM_COLORS = {
             0xFF00F0FF, 0xFFFFE600, 0xFF39FF14, 0xFFFF8800, 0xFFFF007F, 0xFFB388FF,
             0xFF64FFDA, 0xFFFF5252, 0xFF82B1FF, 0xFFFFD180, 0xFFCCFF90, 0xFFEA80FC};
@@ -127,6 +128,7 @@ public class VisualizerView extends View {
     public VisualizerView(Context context, AttributeSet attrs) {
         super(context, attrs);
         dp = getResources().getDisplayMetrics().density;
+        lesson = new LessonRenderer(dp);
         grid.setStrokeWidth(1);
         text.setColor(LABEL);
         text.setTextSize(10 * dp);
@@ -299,8 +301,11 @@ public class VisualizerView extends View {
         }
         lastFrameIndex = f.index;
         if (mode == Mode.RTA) computeRta(f);
-        if (showHints || mode == Mode.FOURIER) explanation = SoundExplainer.explain(f, a4);
-        if (mode == Mode.FOURIER) computeEpicycles(f);
+        if (showHints || mode == Mode.FOURIER || mode == Mode.AIR) explanation = SoundExplainer.explain(f, a4);
+        if (mode == Mode.FOURIER || mode == Mode.AIR) computeEpicycles(f);
+        if (mode == Mode.PITCH) lesson.pitchFrame(f);
+        if (mode == Mode.CHROMA) lesson.chromaFrame(f, a4);
+        if (mode == Mode.ECHO) lesson.echoFrame(f);
         if (mode == Mode.TUNER && f.peakFreqHz > 25) {
             float[] cents = new float[1];
             SpectrumMath.noteName(f.peakFreqHz, a4, cents);
@@ -446,6 +451,19 @@ public class VisualizerView extends View {
             case OSCILLOSCOPE: drawScope(canvas, f); break;
             case TUNER: drawTuner(canvas, f); break;
             case FOURIER: drawFourier(canvas, f); break;
+            case PITCH: lesson.drawPitch(canvas, getWidth(), getHeight(), a4); break;
+            case CHROMA: lesson.drawChroma(canvas, getWidth(), getHeight()); break;
+            case INTERVALS:
+                lesson.drawIntervals(canvas, getWidth(), getHeight());
+                postInvalidateOnAnimation();
+                break;
+            case AIR:
+                lesson.drawAir(canvas, getWidth(), getHeight(), epiValid ? epiRe : null, epiIm, epiValid ? epiF0 : 0,
+                        f != null ? f.rmsDb - f.calibrationDb : -120);
+                postInvalidateOnAnimation();
+                break;
+            case ECHO: lesson.drawEcho(canvas, getWidth(), getHeight()); break;
+            case SAMPLING: lesson.drawSampling(canvas, getWidth(), getHeight()); break;
         }
         if (f != null && cursorX >= 0 && zoomable()) drawCursor(canvas, f);
         if (zoomable() && (u0 > 0 || u1 < 1)) {
@@ -458,7 +476,7 @@ public class VisualizerView extends View {
             text.setColor(LABEL);
             text.setTextAlign(Paint.Align.LEFT);
         }
-        if (f == null) {
+        if (f == null && mode != Mode.INTERVALS && mode != Mode.SAMPLING) {
             text.setTextAlign(Paint.Align.CENTER);
             text.setTextSize(14 * dp);
             canvas.drawText("Натисніть «Старт»", getWidth() / 2f, plot.centerY(), text);

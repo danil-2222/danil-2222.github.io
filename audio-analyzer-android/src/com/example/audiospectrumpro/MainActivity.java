@@ -41,8 +41,16 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private static final VisualizerView.Mode[] MODES_2D = {
             VisualizerView.Mode.LINE, VisualizerView.Mode.BARS, VisualizerView.Mode.RTA,
             VisualizerView.Mode.WATERFALL, null, VisualizerView.Mode.OSCILLOSCOPE, VisualizerView.Mode.TUNER,
-            VisualizerView.Mode.FOURIER
+            VisualizerView.Mode.FOURIER, VisualizerView.Mode.PITCH, VisualizerView.Mode.CHROMA,
+            VisualizerView.Mode.INTERVALS, VisualizerView.Mode.AIR, VisualizerView.Mode.ECHO, VisualizerView.Mode.SAMPLING
     };
+    private static final int MODE_PITCH = 8, MODE_CHROMA = 9, MODE_INTERVALS = 10, MODE_AIR = 11, MODE_ECHO = 12,
+            MODE_SAMPLING = 13, WAVE_INTERVAL = 9;
+    private static final String[] INTERVAL_NAMES = {"Унісон", "Мала секунда", "Велика секунда", "Мала терція",
+            "Велика терція", "Кварта", "Тритон", "Квінта", "Мала секста", "Велика секста", "Мала септима",
+            "Велика септима", "Октава"};
+    private static final int[][] INTERVAL_RATIOS = {{1, 1}, {16, 15}, {9, 8}, {6, 5}, {5, 4}, {4, 3}, {45, 32},
+            {3, 2}, {8, 5}, {5, 3}, {16, 9}, {15, 8}, {2, 1}};
     private static final int MODE_FOURIER = 7, WAVE_HARMONICS = 8;
     private static final float[][] PRESETS = {
             {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},                                          // sine
@@ -286,7 +294,9 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         refreshFftLabels(RATES[Math.max(0, Math.min(RATES.length - 1, prefs.getInt("rate", 0)))]);
         spinner(R.id.spinMode, "mode", 0, new String[]{
                 "Спектр (лінія)", "Спектр (стовпчики)", "1/3 октави (RTA)", "Спектрограма (водоспад)",
-                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер", "Фур'є: кола (навчання)"
+                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер", "Фур'є: кола (навчання)",
+                "Мелодія голосу (навчання)", "Нотне коло (навчання)", "Інтервали (навчання)",
+                "Звук у повітрі (навчання)", "Луна кімнати (навчання)", "Дискретизація (навчання)"
         }, new OnPick() {
             @Override public void pick(int i) {
                 mode = i;
@@ -359,7 +369,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         });
         spinner(R.id.spinWave, "wave", 0, new String[]{
                 "Синус", "Меандр", "Пилка", "Трикутник", "Білий шум", "Рожевий шум",
-                "Лог. свіп 20 Гц – 20 кГц (8 с)", "Два тони: f + 7 кГц (IMD)", "Конструктор гармонік (вкладка «Навчання»)"
+                "Лог. свіп 20 Гц – 20 кГц (8 с)", "Два тони: f + 7 кГц (IMD)", "Конструктор гармонік (вкладка «Навчання»)",
+                "Інтервал з двох нот (вкладка «Навчання»)"
         }, new OnPick() {
             @Override public void pick(int i) { SignalGenerator.waveform = SignalGenerator.Waveform.values()[i]; }
         });
@@ -712,13 +723,51 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             }
         });
 
-        int[] expIds = {R.id.btnExp1, R.id.btnExp2, R.id.btnExp3, R.id.btnExp4, R.id.btnExp5, R.id.btnExp6};
+        setupLabControls();
+        int[] expIds = {R.id.btnExp1, R.id.btnExp2, R.id.btnExp3, R.id.btnExp4, R.id.btnExp5, R.id.btnExp6,
+                R.id.btnExp7, R.id.btnExp8, R.id.btnExp9, R.id.btnExp10, R.id.btnExp11, R.id.btnExp12};
         for (int i = 0; i < expIds.length; i++) {
             final int n = i + 1;
             findViewById(expIds[i]).setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { runExperiment(n); }
             });
         }
+    }
+
+    private void setupLabControls() {
+        spinner(R.id.spinInterval, "interval", 7, INTERVAL_NAMES, new OnPick() {
+            @Override public void pick(int i) {
+                LessonRenderer.intervalName = INTERVAL_NAMES[i];
+                LessonRenderer.intervalP = INTERVAL_RATIOS[i][0];
+                LessonRenderer.intervalQ = INTERVAL_RATIOS[i][1];
+                SignalGenerator.intervalRatio = (float) INTERVAL_RATIOS[i][0] / INTERVAL_RATIOS[i][1];
+            }
+        });
+        final TextView lblDetune = text(R.id.lblDetune);
+        slider(R.id.seekDetune, "detune", 100, 0, new OnPick() {
+            @Override public void pick(int p) {
+                SignalGenerator.intervalDetuneHz = p / 10f;
+                lblDetune.setText(p == 0 ? "Розстроювання: немає (чисті відношення)"
+                        : String.format(Locale.US, "Розстроювання: +%.1f Гц → биття %.1f раз/с", p / 10f, p / 10f));
+            }
+        });
+        final TextView lblSig = text(R.id.lblSampleSig), lblRate = text(R.id.lblSampleRate);
+        slider(R.id.seekSampleSig, "sampleSig", 1000, 500, new OnPick() {
+            @Override public void pick(int p) {
+                float f = (float) (100 * Math.pow(160, p / 1000.0)); // 100 Hz .. 16 kHz
+                LessonRenderer.sampleSignalHz = Math.round(f / 10) * 10f;
+                lblSig.setText("Частота сигналу: " + SpectrumMath.formatHz(LessonRenderer.sampleSignalHz));
+                viz2d.invalidate();
+            }
+        });
+        slider(R.id.seekSampleRate, "sampleRate", 30, 14, new OnPick() {
+            @Override public void pick(int p) {
+                LessonRenderer.sampleRateHz = 1000 + 500 * p; // 1 .. 16 kHz
+                lblRate.setText(String.format(Locale.US, "Частота дискретизації: %d Гц (Найквіст %d Гц)",
+                        (int) LessonRenderer.sampleRateHz, (int) LessonRenderer.sampleRateHz / 2));
+                viz2d.invalidate();
+            }
+        });
     }
 
     private void refreshHarmLabels() {
@@ -755,8 +804,68 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private void runExperiment(int n) {
         if (currentTape != null) closeTape();
         ((CheckBox) findViewById(R.id.chkHints)).setChecked(true);
+        findViewById(R.id.intervalControls).setVisibility(n == 9 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.samplingControls).setVisibility(n == 12 ? View.VISIBLE : View.GONE);
         String text;
         switch (n) {
+            case 7:
+                select(R.id.spinMode, MODE_PITCH);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Співайте, наспівуйте або просто говоріть. Лінія показує висоту голосу в часі поверх нотних ліній "
+                        + "(до, ре, мі…). Зелена — точно в ноту, жовта — трохи мимо, рожева — між нотами.\n\n"
+                        + "Спробуйте: тримайте одну ноту рівно (пряма лінія); заспівайте гаму; зробіть вібрато (хвиля). "
+                        + "У звичайній мові висота постійно «їде» — це інтонація: питання закінчується вгору.";
+                break;
+            case 8:
+                select(R.id.spinMode, MODE_CHROMA);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Нотне коло «згортає» всі октави: до будь-якої висоти потрапляє в сектор «до». "
+                        + "Яскраві сектори — ноти, що звучать зараз.\n\n"
+                        + "Заграйте акорд на гітарі чи піаніно (або увімкніть пісню поряд): ноти з'єднаються фігурою, "
+                        + "а вгорі з'явиться назва — «до мажор», «ля мінор»… Мажор і мінор — це трикутники різної форми.";
+                break;
+            case 9:
+                SignalGenerator.waveform = SignalGenerator.Waveform.INTERVAL;
+                SignalGenerator.frequency = 220f;
+                select(R.id.spinWave, WAVE_INTERVAL);
+                select(R.id.spinMode, MODE_INTERVALS);
+                select(R.id.spinSource, 1);
+                chkPlay.setChecked(true);
+                text = "Дві ноти звучать разом. Вгорі — фігура Ліссажу: по горизонталі нижня нота, по вертикалі верхня. "
+                        + "Чим простіше відношення частот (октава 2:1, квінта 3:2), тим простіша фігура і тим «злитніше» "
+                        + "звучить. Складні відношення (мала секунда 16:15, тритон 45:32) дають заплутану фігуру і напругу.\n\n"
+                        + "Оберіть «Унісон» і додайте розстроювання: почуєте «вау-вау» — биття. Так гітаристи настроюють струни: "
+                        + "биття зникає, коли ноти збіглися.";
+                break;
+            case 10:
+                select(R.id.spinMode, MODE_AIR);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Звук — це хвиля тиску в повітрі. Молекули не летять від вас до телефона: вони коливаються на місці, "
+                        + "створюючи згущення і розрідження, що біжать зі швидкістю 343 м/с.\n\n"
+                        + "Свисніть або заспівайте: внизу видно довжину хвилі. Низька нота (100 Гц) — 3,4 м, "
+                        + "високий свист (3 кГц) — лише 11 см. Тому басом легко «пробити» стіну, а високі звуки глушаться.";
+                break;
+            case 11:
+                select(R.id.spinMode, MODE_ECHO);
+                select(R.id.spinSource, 0);
+                chkPlay.setChecked(false);
+                text = "Після різкого звуку кімната ще деякий час «дзвенить» — звук відбивається від стін. "
+                        + "Час, за який він стихає на 60 дБ (у мільйон разів), називається RT60.\n\n"
+                        + "Будьте в тиші і один раз голосно ляскніть у долоні. Порівняйте кімнату з килимом, кухню, ванну "
+                        + "і сходи: м'які речі поглинають звук, тверді стіни — відбивають.";
+                break;
+            case 12:
+                select(R.id.spinMode, MODE_SAMPLING);
+                chkPlay.setChecked(false);
+                text = "Телефон не записує хвилю цілком — лише вимірює її багато разів на секунду (точки). "
+                        + "За точками він потім відновлює звук.\n\n"
+                        + "Поки частота сигналу менша за половину частоти дискретизації (межа Найквіста), відновлення "
+                        + "правильне. Підніміть частоту вище — точки «зіграють» зовсім іншу, нижчу хвилю. Це аліасинг. "
+                        + "Тому звук пишуть із частотою 44,1–48 кГц: це вдвічі більше за межу слуху (20 кГц).";
+                break;
             case 1:
                 select(R.id.spinMode, 0);
                 select(R.id.spinSource, 0);
