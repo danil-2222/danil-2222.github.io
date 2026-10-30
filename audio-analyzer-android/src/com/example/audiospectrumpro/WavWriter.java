@@ -31,6 +31,22 @@ final class WavWriter {
         dataBytes += len * 2;
     }
 
+    synchronized void writePcm(short[] samples, int off, int len) throws IOException {
+        if (closed) return;
+        int chunk = 8192;
+        if (scratch.length < chunk * 2) scratch = new byte[chunk * 2];
+        for (int p = 0; p < len; p += chunk) {
+            int n = Math.min(chunk, len - p);
+            for (int i = 0; i < n; i++) {
+                short v = samples[off + p + i];
+                scratch[2 * i] = (byte) v;
+                scratch[2 * i + 1] = (byte) (v >> 8);
+            }
+            out.write(scratch, 0, n * 2);
+            dataBytes += n * 2;
+        }
+    }
+
     synchronized void close() throws IOException {
         if (closed) return;
         closed = true;

@@ -164,4 +164,93 @@ public class Shots {
         run(1500);
         shot(a, "08_landscape");
     }
+
+    static Object call(Object target, String method, Class<?>[] types, Object... args) throws Exception {
+        java.lang.reflect.Method m = target.getClass().getDeclaredMethod(method, types);
+        m.setAccessible(true);
+        return m.invoke(target, args);
+    }
+
+    /** Stereo 44.1 kHz test file: a short melody with harmonics, a chord and a noise burst. */
+    static File makeWav() throws Exception {
+        int rate = 44100, secs = 8;
+        int n = rate * secs;
+        float[] notes = {261.63f, 293.66f, 329.63f, 349.23f, 392f, 440f, 493.88f, 523.25f};
+        java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+        java.util.Random rnd = new java.util.Random(1);
+        for (int i = 0; i < n; i++) {
+            double t = (double) i / rate;
+            double v = 0;
+            if (t < 4) {
+                int k = (int) (t / 0.5);
+                double f = notes[k], local = t - k * 0.5;
+                double env = Math.exp(-local * 4);
+                for (int h = 1; h <= 6; h++) v += env * Math.sin(2 * Math.PI * f * h * t) / h * 0.4;
+            } else if (t < 6) {
+                for (float f : new float[]{261.63f, 329.63f, 392f}) v += 0.2 * Math.sin(2 * Math.PI * f * t);
+            } else if (t < 6.5) {
+                v = (rnd.nextDouble() * 2 - 1) * 0.5;
+            } else {
+                double f = 200 * Math.pow(40, (t - 6.5) / 1.5);
+                v = 0.4 * Math.sin(2 * Math.PI * 200 * 1.5 / Math.log(40) * (Math.pow(40, (t - 6.5) / 1.5) - 1));
+            }
+            short l = (short) (v * 32767), r = (short) (v * 0.8 * 32767);
+            data.write(l & 0xFF); data.write((l >> 8) & 0xFF);
+            data.write(r & 0xFF); data.write((r >> 8) & 0xFF);
+        }
+        byte[] pcm = data.toByteArray();
+        java.nio.ByteBuffer h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        h.put("RIFF".getBytes()).putInt(36 + pcm.length).put("WAVE".getBytes());
+        h.put("fmt ".getBytes()).putInt(16).putShort((short) 1).putShort((short) 2).putInt(rate)
+                .putInt(rate * 4).putShort((short) 4).putShort((short) 16);
+        h.put("data".getBytes()).putInt(pcm.length);
+        File f = new File(OUT, "melody.wav");
+        OUT.mkdirs();
+        FileOutputStream o = new FileOutputStream(f);
+        o.write(h.array());
+        o.write(pcm);
+        o.close();
+        return f;
+    }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void timeMachine() throws Exception {
+        MainActivity a = setup();
+        select(a, "spinMode", 3);
+        gen("LOG_SWEEP", 1000, 0.5f);
+        run(6000);
+        gen("SAWTOOTH", 330, 0.4f);
+        run(3000);
+        click(a, "btnTimeMachine");
+        run(4000);
+        shot(a, "11_time_machine_waterfall");
+
+        Object engine = getField(a, "engine");
+        call(engine, "seek", new Class<?>[]{int.class}, 48000 * 3);
+        select(a, "spinMode", 0);
+        run(1500);
+        shot(a, "12_time_machine_line");
+
+        call(engine, "setPlaying", new Class<?>[]{boolean.class}, true);
+        run(1000);
+        System.out.println("PLAYHEAD after 1s play: " + call(engine, "getPlayhead", new Class<?>[]{}));
+        click(a, "btnTapeClose");
+
+        File wav = makeWav();
+        call(a, "loadFile", new Class<?>[]{android.net.Uri.class}, android.net.Uri.fromFile(wav));
+        run(2000);
+        select(a, "spinMode", 3);
+        run(5000);
+        shot(a, "13_file_waterfall");
+        call(engine, "seek", new Class<?>[]{int.class}, 44100 * 5);
+        select(a, "spinMode", 2);
+        run(1500);
+        shot(a, "14_file_rta_chord");
+    }
+
+    static Object getField(Object o, String name) throws Exception {
+        Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(o);
+    }
 }

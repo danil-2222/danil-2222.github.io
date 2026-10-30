@@ -30,6 +30,9 @@ public class VisualizerView extends View {
 
     public interface Callbacks {
         void onToggleFullscreen();
+
+        /** Tape mode: the user tapped a moment on the tape spectrogram. */
+        void onSeek(int samplePosition);
     }
 
     private static final int BG = Color.parseColor("#080C14");
@@ -89,6 +92,16 @@ public class VisualizerView extends View {
 
     private final float[] rtaDb = new float[RTA_FREQS.length];
     private final float[] rtaPeak = new float[RTA_FREQS.length];
+
+    // Tape ("time machine") mode.
+    private AudioEngine.Tape tape;
+    private int tapeFft = 4096;
+    private AudioEngine.WindowType tapeWindow = AudioEngine.WindowType.HANN;
+    private float tapeOffsetDb;
+    private final TapeSpectrogram tapeRenderer = new TapeSpectrogram();
+    private Bitmap tapeBitmap;
+    private TapeSpectrogram.Params tapeParams;
+    private boolean tapeRendering;
 
     private float cursorX = -1;
     private boolean cursorRemovePending;
@@ -153,10 +166,64 @@ public class VisualizerView extends View {
         mode = m;
         cursorX = -1;
         if (m == Mode.WATERFALL) clearWaterfall();
+        requestTapeImage();
         invalidate();
     }
 
-    public void setPalette(Palettes.Palette p) { palette = p; invalidate(); }
+    public void setPalette(Palettes.Palette p) { palette = p; requestTapeImage(); invalidate(); }
+
+    /** Enters (non-null) or leaves (null) tape mode. */
+    public void setTape(AudioEngine.Tape t) {
+        tape = t;
+        if (t == null) {
+            tapeBitmap = null;
+            tapeParams = null;
+        }
+        if (t != null && t.rate != lastSampleRate) {
+            lastSampleRate = t.rate;
+            updateRange();
+        }
+        clearWaterfall();
+        requestTapeImage();
+        invalidate();
+    }
+
+    /** Analysis settings for the tape spectrogram; offsetDb = input gain + calibration. */
+    public void setTapeAnalysis(int fftSize, AudioEngine.WindowType window, float offsetDb) {
+        tapeFft = Math.min(fftSize, 8192);
+        tapeWindow = window;
+        tapeOffsetDb = offsetDb;
+        requestTapeImage();
+    }
+
+    private void requestTapeImage() {
+        if (tape == null || mode != Mode.WATERFALL || plot.width() <= 0 || plot.height() <= 0) return;
+        TapeSpectrogram.Params p = new TapeSpectrogram.Params();
+        p.tape = tape;
+        p.width = (int) plot.width();
+        p.height = (int) plot.height();
+        p.log = logScale;
+        p.lo = lo;
+        p.hi = hi;
+        p.fftSize = tapeFft;
+        p.window = tapeWindow;
+        p.offsetDb = tapeOffsetDb;
+        p.dbTop = dbTop;
+        p.dbBottom = dbBottom;
+        p.palette = palette;
+        if (p.sameAs(tapeParams)) return;
+        tapeParams = p;
+        tapeRendering = true;
+        tapeRenderer.request(p, new TapeSpectrogram.Callback() {
+            @Override public void onRendered(Bitmap b, TapeSpectrogram.Params params) {
+                if (params != tapeParams) return;
+                tapeBitmap = b;
+                tapeRendering = false;
+                invalidate();
+            }
+        });
+        invalidate();
+    }
 
     public void setLogScale(boolean log) {
         logScale = log;
@@ -164,6 +231,7 @@ public class VisualizerView extends View {
         u1 = 1f;
         updateRange();
         clearWaterfall();
+        requestTapeImage();
         invalidate();
     }
 
@@ -174,6 +242,7 @@ public class VisualizerView extends View {
     public void setDbRange(float top, float bottom) {
         dbTop = top;
         dbBottom = bottom;
+        requestTapeImage();
         invalidate();
     }
 
@@ -204,7 +273,7 @@ public class VisualizerView extends View {
             updateRange();
             clearWaterfall();
         }
-        if (mode == Mode.WATERFALL) {
+        if (mode == Mode.WATERFALL && f.tape == null) {
             long missed = lastFrameIndex < 0 ? 1 : f.index - lastFrameIndex;
             pushWaterfallRow(f, (int) Math.max(1, Math.min(16, missed)));
         }
@@ -266,6 +335,7 @@ public class VisualizerView extends View {
         if (u1 > 1) { u1 = 1; u0 = 1 - span; }
         updateRange();
         if (mode == Mode.WATERFALL) clearWaterfall();
+        requestTapeImage();
         invalidate();
     }
 
@@ -287,6 +357,16 @@ public class VisualizerView extends View {
             return true;
         }
         float x = e.getX();
+        if (tape != null && mode == Mode.WATERFALL) {
+            int a = e.getActionMasked();
+            if ((a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_MOVE) && e.getY() <= plot.bottom && callbacks != null) {
+                float t = 1f - Math.max(0, Math.min(1, (e.getY() - plot.top) / plot.height()));
+                callbacks.onSeek(Math.round(t * tape.pcm.length));
+                cursorX = x;
+                invalidate();
+            }
+            return true;
+        }
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (cursorX >= 0 && Math.abs(x - cursorX) < 24 * dp) cursorRemovePending = true;
@@ -316,6 +396,7 @@ public class VisualizerView extends View {
         fillGradient = null;
         updateRange();
         clearWaterfall();
+        requestTapeImage();
     }
 
     private void clearWaterfall() {
@@ -672,7 +753,68 @@ public class VisualizerView extends View {
         }
     }
 
+    private void drawTapeWaterfall(Canvas c) {
+        if (tapeBitmap != null) {
+            dst.set(plot.left, plot.top, plot.right, plot.bottom);
+            c.drawBitmap(tapeBitmap, null, dst, null);
+        }
+        drawFreqGrid(c, false);
+        float secs = tape.seconds();
+        // Time labels on the left edge.
+        double[] steps = {0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300};
+        double step = steps[steps.length - 1];
+        for (double st : steps) {
+            if (secs / st <= plot.height() / (40 * dp)) { step = st; break; }
+        }
+        text.setTextAlign(Paint.Align.LEFT);
+        grid.setColor(GRID);
+        for (double t = 0; t <= secs + 1e-6; t += step) {
+            float y = plot.top + (float) (1 - t / secs) * plot.height();
+            c.drawLine(plot.left, y, plot.left + 6 * dp, y, grid);
+            y = Math.max(plot.top + 7 * dp, Math.min(plot.bottom - 7 * dp, y));
+            String s = formatTime((float) t);
+            float tw = text.measureText(s);
+            c.drawRect(plot.left + 7 * dp, y - 6 * dp, plot.left + tw + 11 * dp, y + 6 * dp, badge);
+            c.drawText(s, plot.left + 9 * dp, y + 4 * dp, text);
+        }
+        AudioEngine.Frame f = frame;
+        if (f != null && f.tape == tape) {
+            float y = plot.top + (1 - (float) f.tapePosition / tape.pcm.length) * plot.height();
+            stroke.setColor(Color.WHITE);
+            stroke.setStrokeWidth(1.5f * dp);
+            c.drawLine(plot.left, y, plot.right, y, stroke);
+            String s = "▶ " + formatTime((float) f.tapePosition / tape.rate);
+            text.setTextSize(12 * dp);
+            float tw = text.measureText(s);
+            float by = Math.max(plot.top + 14 * dp, Math.min(plot.bottom - 4 * dp, y - 4 * dp));
+            c.drawRect(plot.right - tw - 10 * dp, by - 12 * dp, plot.right - 2 * dp, by + 3 * dp, badge);
+            text.setColor(Color.WHITE);
+            c.drawText(s, plot.right - tw - 6 * dp, by, text);
+            text.setColor(LABEL);
+            text.setTextSize(10 * dp);
+        }
+        if (tapeRendering) {
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setTextSize(13 * dp);
+            text.setColor(Color.parseColor("#00F0FF"));
+            c.drawText("Будую спектрограму…", plot.centerX(), plot.centerY(), text);
+            text.setColor(LABEL);
+            text.setTextSize(10 * dp);
+            text.setTextAlign(Paint.Align.LEFT);
+        }
+    }
+
+    static String formatTime(float seconds) {
+        int m = (int) (seconds / 60);
+        float sec = seconds - m * 60;
+        return String.format(Locale.US, "%d:%04.1f", m, sec);
+    }
+
     private void drawWaterfall(Canvas c) {
+        if (tape != null) {
+            drawTapeWaterfall(c);
+            return;
+        }
         if (wfBitmap != null) {
             int w = wfBitmap.getWidth(), h = wfBitmap.getHeight();
             int first = h - wfHead;

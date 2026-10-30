@@ -1,7 +1,9 @@
 package com.example.audiospectrumpro;
 
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
 
 import java.io.File;
@@ -9,17 +11,37 @@ import java.io.IOException;
 import java.util.Arrays;
 
 /**
- * Captures audio (microphone or internal test generator), runs a windowed FFT on a
- * sliding buffer and publishes spectrum frames plus derived measurements.
+ * Captures audio (microphone or internal generator) and publishes analysed frames.
+ * The last {@link #HISTORY_SECONDS} seconds of input are kept so they can be reopened as a
+ * {@link Tape} ("time machine"); audio files are analysed through the same tape mode.
  */
 public class AudioEngine {
     public static final float MIN_DB = -140f;
-    private static final int HOP = 1024;
+    public static final int HOP = 1024;
+    public static final int HISTORY_SECONDS = 120;
     /** MediaRecorder.AudioSource.UNPROCESSED (API 24); the build targets the API 23 stubs. */
     public static final int SOURCE_UNPROCESSED = 9;
 
     public enum SourceType { MIC, GENERATOR }
     public enum WindowType { HANN, HAMMING, BLACKMAN_HARRIS, FLAT_TOP, RECTANGULAR }
+
+    /** Mono 16-bit audio held in memory: recent history or a decoded file. */
+    public static final class Tape {
+        public final short[] pcm;
+        public final int rate;
+        public final String name;
+        /** True for the live-input history, false for a file. */
+        public final boolean history;
+
+        public Tape(short[] pcm, int rate, String name, boolean history) {
+            this.pcm = pcm;
+            this.rate = rate;
+            this.name = name;
+            this.history = history;
+        }
+
+        public float seconds() { return (float) pcm.length / rate; }
+    }
 
     /** Immutable snapshot handed to the UI. Levels include the calibration offset. */
     public static final class Frame {
@@ -45,6 +67,10 @@ public class AudioEngine {
         public boolean tonal;
         /** Sequence number; gaps mean the UI skipped frames. */
         public long index;
+        /** Set when the frame comes from a tape; position is the end of the analysis window. */
+        public Tape tape;
+        public int tapePosition;
+        public boolean tapePlaying;
     }
 
     public interface Listener {
@@ -55,6 +81,7 @@ public class AudioEngine {
     private final Listener listener;
     private final BiquadFilter filter = new BiquadFilter();
     private final SignalGenerator generator = new SignalGenerator();
+    private final Analyzer analyzer = new Analyzer();
 
     private volatile SourceType sourceType = SourceType.MIC;
     private volatile int micSource = SOURCE_UNPROCESSED;
@@ -69,6 +96,22 @@ public class AudioEngine {
     private volatile boolean resetPeaks;
     private volatile int actualSampleRate;
 
+    // Live-input history ring buffer (raw samples, before gain and filter).
+    private short[] history;
+    private int historyPos;
+    private long historyCount;
+    private int historyRate;
+
+    // Tape mode.
+    private volatile Tape tape;
+    private volatile int playhead;
+    private volatile boolean playing;
+    private volatile boolean refresh;
+    private volatile float speed = 1f;
+    private volatile boolean audible = true;
+    private AudioTrack track;
+    private float trackSpeed;
+
     private Thread thread;
     private AudioRecord record;
     private WavWriter wav;
@@ -78,16 +121,26 @@ public class AudioEngine {
     }
 
     public void setSourceType(SourceType t) { sourceType = t; }
-    public void setInputGainDb(float db) { gainLinear = (float) Math.pow(10, db / 20.0); }
-    public void setCalibrationDb(float db) { calibrationDb = db; }
+    public void setInputGainDb(float db) { gainLinear = (float) Math.pow(10, db / 20.0); refresh = true; }
+    public void setCalibrationDb(float db) { calibrationDb = db; refresh = true; }
     public void setSmoothing(float s) { smoothing = Math.max(0f, Math.min(0.97f, s)); }
-    public void setFftSize(int size) { requestedFftSize = size; }
-    public void setWindow(WindowType w) { requestedWindow = w; }
-    public void setFilter(BiquadFilter.Type type) { filter.setFilter(type, actualSampleRate > 0 ? actualSampleRate : sampleRate); }
+    public void setFftSize(int size) { requestedFftSize = size; refresh = true; }
+    public void setWindow(WindowType w) { requestedWindow = w; refresh = true; }
+
+    public void setFilter(BiquadFilter.Type type) {
+        filter.setFilter(type, actualSampleRate > 0 ? actualSampleRate : sampleRate);
+        refresh = true;
+    }
+
+    public BiquadFilter.Type getFilterType() { return filter.getType(); }
+    public float getGainLinear() { return gainLinear; }
+    public int getFftSize() { return requestedFftSize; }
+    public WindowType getWindow() { return requestedWindow; }
+    public float getCalibrationDb() { return calibrationDb; }
     public void setFrozen(boolean f) { frozen = f; }
     public boolean isFrozen() { return frozen; }
     public boolean isRunning() { return running; }
-    public void resetPeakHold() { resetPeaks = true; }
+    public void resetPeakHold() { resetPeaks = true; refresh = true; }
     public int getSampleRate() { return actualSampleRate > 0 ? actualSampleRate : sampleRate; }
 
     /** Takes effect on the next start(). */
@@ -96,12 +149,74 @@ public class AudioEngine {
     /** Takes effect on the next start(). */
     public void setSampleRate(int rate) { sampleRate = rate; }
 
-    /** @param micAllowed whether RECORD_AUDIO is granted; without it only the generator works. */
+    // ---------------------------------------------------------------- tape ("time machine")
+
+    /** Seconds of live input currently held in the history buffer. */
+    public synchronized float historySeconds() {
+        return history == null ? 0 : (float) Math.min(historyCount, history.length) / historyRate;
+    }
+
+    /** Copies the history buffer (oldest first) into a tape, or returns null if it is empty. */
+    public synchronized Tape captureHistory() {
+        if (history == null || historyCount == 0) return null;
+        int n = (int) Math.min(historyCount, history.length);
+        short[] pcm = new short[n];
+        int start = (historyPos - n + history.length) % history.length;
+        int first = Math.min(n, history.length - start);
+        System.arraycopy(history, start, pcm, 0, first);
+        System.arraycopy(history, 0, pcm, first, n - first);
+        return new Tape(pcm, historyRate, "Останні " + Math.round((float) n / historyRate) + " с", true);
+    }
+
+    public void openTape(Tape t, int position) {
+        playing = false;
+        playhead = Math.max(0, Math.min(t.pcm.length, position));
+        tape = t;
+        refresh = true;
+    }
+
+    public void closeTape() {
+        playing = false;
+        tape = null;
+    }
+
+    public Tape getTape() { return tape; }
+    public int getPlayhead() { return playhead; }
+    public boolean isPlaying() { return playing; }
+
+    public void seek(int position) {
+        Tape t = tape;
+        if (t == null) return;
+        playhead = Math.max(0, Math.min(t.pcm.length, position));
+        refresh = true;
+    }
+
+    public void setPlaying(boolean p) {
+        Tape t = tape;
+        if (t == null) return;
+        if (p && playhead >= t.pcm.length) playhead = 0;
+        playing = p;
+        refresh = true;
+    }
+
+    public void setSpeed(float s) { speed = s; }
+    public float getSpeed() { return speed; }
+    public void setTapeAudible(boolean a) { audible = a; }
+
+    // ---------------------------------------------------------------- lifecycle
+
+    /** @param micAllowed whether RECORD_AUDIO is granted; without it only generator and tapes work. */
     public synchronized void start(boolean micAllowed) {
         if (running) return;
         actualSampleRate = sampleRate;
         if (micAllowed) record = openRecord();
         filter.setFilter(filter.getType(), actualSampleRate);
+        if (history == null || historyRate != actualSampleRate) {
+            historyRate = actualSampleRate;
+            history = new short[historyRate * HISTORY_SECONDS];
+            historyPos = 0;
+            historyCount = 0;
+        }
         running = true;
         thread = new Thread(new Runnable() {
             @Override public void run() { loop(); }
@@ -143,7 +258,7 @@ public class AudioEngine {
     public synchronized void stop() {
         running = false;
         if (thread != null) {
-            try { thread.join(500); } catch (InterruptedException ignored) {}
+            try { thread.join(800); } catch (InterruptedException ignored) {}
             thread = null;
         }
         if (record != null) {
@@ -196,219 +311,189 @@ public class AudioEngine {
         return w;
     }
 
+    // ---------------------------------------------------------------- processing
+
     private void loop() {
         final int rate = actualSampleRate;
-        int size = 0;
-        WindowType windowType = null;
-        FFT fft = null;
-        float[] ring = null, window = null, re = null, im = null, mag = null, smooth = null, peak = null;
-        float windowSum = 1, enbw = 1.5f;
+        float[] ring = new float[0];
         short[] pcm = new short[HOP];
         float[] block = new float[HOP];
-
-        float[] bassHistory = new float[43];
-        Arrays.fill(bassHistory, MIN_DB);
-        int bassIdx = 0;
-        long lastBeat = 0;
-        long[] intervals = new long[8];
-        int intervalCount = 0;
-        int bpm = 0;
         boolean micWarned = false;
-        long frameIndex = 0;
 
-        while (running) {
-            int want = requestedFftSize;
-            if (want != size) {
-                size = want;
-                fft = new FFT(size);
-                ring = new float[size];
-                re = new float[size];
-                im = new float[size];
-                mag = new float[size / 2];
-                smooth = new float[size / 2];
-                peak = new float[size / 2];
-                Arrays.fill(smooth, MIN_DB);
-                Arrays.fill(peak, MIN_DB);
-                windowType = null;
-            }
-            if (windowType != requestedWindow) {
-                windowType = requestedWindow;
-                window = buildWindow(windowType, size);
-                windowSum = 0;
-                double sq = 0;
-                for (float v : window) { windowSum += v; sq += v * v; }
-                enbw = (float) (size * sq / ((double) windowSum * windowSum));
-            }
-            int hop = Math.min(HOP, size);
+        try {
+            while (running) {
+                analyzer.configure(requestedFftSize, requestedWindow);
+                int size = analyzer.size();
+                if (ring.length != size) ring = new float[size];
+                if (resetPeaks) { analyzer.resetPeaks(); resetPeaks = false; }
 
-            // 1. Acquire one hop of samples.
-            int clipped = 0;
-            if (sourceType == SourceType.MIC) {
-                if (record == null) {
-                    if (!micWarned) {
-                        listener.onError("Немає доступу до мікрофона — оберіть внутрішній генератор або дайте дозвіл");
-                        micWarned = true;
-                    }
-                    Arrays.fill(block, 0, hop, 0f);
-                    sleepMs(hop * 1000L / rate);
-                } else {
-                    int got = 0;
-                    while (got < hop && running) {
-                        int r = record.read(pcm, got, hop - got);
-                        if (r <= 0) break;
-                        got += r;
+                Tape t = tape;
+                if (t != null) {
+                    tapeStep(t, ring);
+                    continue;
+                }
+                releaseTrack();
+                int hop = Math.min(HOP, size);
+
+                // 1. Acquire one hop of raw samples.
+                int clipped = 0;
+                if (sourceType == SourceType.MIC) {
+                    if (record == null) {
+                        if (!micWarned) {
+                            listener.onError("Немає доступу до мікрофона — оберіть внутрішній генератор або дайте дозвіл");
+                            micWarned = true;
+                        }
+                        Arrays.fill(pcm, 0, hop, (short) 0);
+                        sleepMs(hop * 1000L / rate);
+                    } else {
+                        int got = 0;
+                        while (got < hop && running) {
+                            int r = record.read(pcm, got, hop - got);
+                            if (r <= 0) break;
+                            got += r;
+                        }
+                        for (int i = got; i < hop; i++) pcm[i] = 0;
                     }
                     for (int i = 0; i < hop; i++) {
-                        short s = i < got ? pcm[i] : 0;
+                        short s = pcm[i];
                         if (s >= 32767 || s <= -32768) clipped++;
                         block[i] = s / 32768f;
                     }
-                }
-            } else {
-                generator.fill(block, hop, rate);
-                sleepMs(hop * 1000L / rate);
-            }
-
-            float g = gainLinear;
-            for (int i = 0; i < hop; i++) block[i] *= g;
-            filter.process(block, hop);
-
-            WavWriter w = wav;
-            if (w != null) {
-                try { w.write(block, hop); } catch (IOException e) {
-                    listener.onError("Помилка запису WAV: " + e.getMessage());
-                    stopRecording();
-                }
-            }
-
-            System.arraycopy(ring, hop, ring, 0, size - hop);
-            System.arraycopy(block, 0, ring, size - hop, hop);
-
-            if (frozen) continue;
-
-            // 2. Windowed FFT.
-            for (int i = 0; i < size; i++) { re[i] = ring[i] * window[i]; im[i] = 0f; }
-            fft.forward(re, im);
-
-            int bins = size / 2;
-            float binHz = (float) rate / size;
-            float norm = 2f / windowSum;
-            float a = smoothing;
-            float decay = 0.4f * hop / 1024f;
-            if (resetPeaks) { Arrays.fill(peak, MIN_DB); resetPeaks = false; }
-
-            int firstBin = Math.max(1, (int) Math.ceil(20 / binHz));
-            int maxBin = firstBin;
-            for (int i = 0; i < bins; i++) {
-                float m = (float) Math.sqrt(re[i] * re[i] + im[i] * im[i]) * norm;
-                mag[i] = m;
-                float db = m > 1e-7f ? (float) (20 * Math.log10(m)) : MIN_DB;
-                if (db < MIN_DB) db = MIN_DB;
-                smooth[i] = smooth[i] * a + db * (1 - a);
-                peak[i] = smooth[i] >= peak[i] ? smooth[i] : Math.max(MIN_DB, peak[i] - decay);
-                if (i >= firstBin && smooth[i] > smooth[maxBin]) maxBin = i;
-            }
-
-            // 3. Peak frequency with parabolic interpolation.
-            float peakFreq = maxBin * binHz;
-            if (maxBin > 0 && maxBin < bins - 1) {
-                float al = smooth[maxBin - 1], be = smooth[maxBin], ga = smooth[maxBin + 1];
-                float den = al - 2 * be + ga;
-                if (Math.abs(den) > 1e-6f) {
-                    float d = 0.5f * (al - ga) / den;
-                    peakFreq = (maxBin + Math.max(-0.5f, Math.min(0.5f, d))) * binHz;
-                }
-            }
-
-            // 4. THD (harmonics 2..9), THD+N and SNR (fundamental vs. everything except harmonics).
-            float thd = 0, thdN = 0, snr = 0;
-            int f0Bin = Math.round(peakFreq / binHz);
-            int lobe = windowType == WindowType.RECTANGULAR ? 2 : windowType == WindowType.HANN || windowType == WindowType.HAMMING ? 3 : 5;
-            if (smooth[maxBin] > -100 && peakFreq > 20) {
-                double sig = 0, harm = 0, noise = 0;
-                for (int i = firstBin; i < bins; i++) {
-                    double p = (double) mag[i] * mag[i];
-                    if (Math.abs(i - f0Bin) <= lobe) { sig += p; continue; }
-                    boolean isHarm = false;
-                    for (int h = 2; h <= 9 && !isHarm; h++) {
-                        int hb = Math.round(h * peakFreq / binHz);
-                        if (hb >= bins) break;
-                        if (Math.abs(i - hb) <= lobe) isHarm = true;
-                    }
-                    if (isHarm) harm += p; else noise += p;
-                }
-                if (sig > 0) {
-                    thd = (float) (Math.sqrt(harm / sig) * 100);
-                    thdN = (float) (Math.sqrt((harm + noise) / sig) * 100);
-                    if (noise > 0) snr = (float) (10 * Math.log10(sig / noise));
-                }
-            }
-
-            // 5. RMS level of the analysis buffer.
-            double sum = 0;
-            for (int i = 0; i < size; i++) sum += ring[i] * ring[i];
-            double rms = Math.sqrt(sum / size);
-            float rmsDb = rms > 1e-7 ? (float) (20 * Math.log10(rms)) : MIN_DB;
-
-            // 6. Beat detection: onsets in 30-150 Hz energy, BPM reported only when intervals agree.
-            int lo = Math.max(1, (int) (30 / binHz)), hi = Math.max(lo + 1, (int) (150 / binHz));
-            double bass = 0;
-            for (int i = lo; i < hi && i < bins; i++) bass += (double) mag[i] * mag[i];
-            float bassDb = bass > 1e-14 ? (float) (10 * Math.log10(bass)) : MIN_DB;
-            float avgDb = 0;
-            for (float v : bassHistory) avgDb += v;
-            avgDb /= bassHistory.length;
-            bassHistory[bassIdx] = bassDb;
-            bassIdx = (bassIdx + 1) % bassHistory.length;
-            long now = System.currentTimeMillis();
-            if (bassDb > avgDb + 6 && bassDb > -50 && now - lastBeat > 280) {
-                long dt = now - lastBeat;
-                lastBeat = now;
-                if (dt >= 300 && dt <= 1500) {
-                    intervals[intervalCount % intervals.length] = dt;
-                    intervalCount++;
-                    int n = Math.min(intervalCount, intervals.length);
-                    if (n >= 4) {
-                        long[] sorted = Arrays.copyOf(intervals, n);
-                        Arrays.sort(sorted);
-                        long median = sorted[n / 2];
-                        long[] dev = new long[n];
-                        for (int i = 0; i < n; i++) dev[i] = Math.abs(sorted[i] - median);
-                        Arrays.sort(dev);
-                        bpm = dev[n / 2] < median * 0.12 ? Math.round(60000f / median) : 0;
-                    }
                 } else {
-                    intervalCount = 0;
+                    generator.fill(block, hop, rate);
+                    for (int i = 0; i < hop; i++) {
+                        pcm[i] = (short) Math.round(Math.max(-1f, Math.min(1f, block[i])) * 32767f);
+                    }
+                    sleepMs(hop * 1000L / rate);
                 }
-            }
-            if (now - lastBeat > 3000) { bpm = 0; intervalCount = 0; }
+                appendHistory(pcm, hop);
 
-            float cal = calibrationDb;
-            Frame f = new Frame();
-            f.fftSize = size;
-            f.sampleRate = rate;
-            f.binHz = binHz;
-            f.enbw = enbw;
-            f.calibrationDb = cal;
-            f.spectrumDb = new float[bins];
-            f.peakHoldDb = new float[bins];
-            for (int i = 0; i < bins; i++) {
-                f.spectrumDb[i] = smooth[i] + cal;
-                f.peakHoldDb[i] = peak[i] + cal;
+                // 2. Gain, filter, optional recording.
+                float g = gainLinear;
+                for (int i = 0; i < hop; i++) block[i] *= g;
+                filter.process(block, hop);
+                WavWriter w = wav;
+                if (w != null) {
+                    try { w.write(block, hop); } catch (IOException e) {
+                        listener.onError("Помилка запису WAV: " + e.getMessage());
+                        stopRecording();
+                    }
+                }
+
+                System.arraycopy(ring, hop, ring, 0, size - hop);
+                System.arraycopy(block, 0, ring, size - hop, hop);
+                if (frozen) continue;
+
+                listener.onFrame(analyzer.analyze(ring, rate, smoothing, calibrationDb, clipped, hop, true));
             }
-            f.time = ring.clone();
-            f.peakFreqHz = peakFreq;
-            f.peakDb = smooth[maxBin] + cal;
-            f.thd = thd;
-            f.thdN = thdN;
-            f.snr = snr;
-            f.rmsDb = rmsDb + cal;
-            f.clipPercent = 100f * clipped / hop;
-            f.bpm = bpm;
-            f.tonal = snr > 15;
-            f.index = frameIndex++;
-            listener.onFrame(f);
+        } finally {
+            releaseTrack();
         }
+    }
+
+    private synchronized void appendHistory(short[] pcm, int n) {
+        if (history == null) return;
+        int len = history.length;
+        int first = Math.min(n, len - historyPos);
+        System.arraycopy(pcm, 0, history, historyPos, first);
+        System.arraycopy(pcm, first, history, 0, n - first);
+        historyPos = (historyPos + n) % len;
+        historyCount += n;
+    }
+
+    /** One step of tape mode: play the next hop, or re-analyse the current position after a seek. */
+    private void tapeStep(Tape t, float[] ring) {
+        int size = ring.length;
+        if (playing) {
+            int start = playhead;
+            if (start >= t.pcm.length) {
+                playing = false;
+                refresh = true;
+                return;
+            }
+            int n = Math.min(Math.min(HOP, size), t.pcm.length - start);
+            float sp = speed;
+            if (audible && writeTrack(t, start, n, sp)) {
+                // AudioTrack.write blocks, which paces playback.
+            } else {
+                sleepMs(Math.max(1, (long) (n * 1000f / (t.rate * sp))));
+            }
+            if (tape != t || !playing) return; // seek or close while writing
+            if (playhead == start) playhead = start + n;
+            refresh = false;
+            listener.onFrame(analyzeTape(t, playhead, smoothing, n, true));
+        } else {
+            pauseTrack();
+            if (refresh) {
+                refresh = false;
+                // A paused tape shows exactly one moment: no smoothing or peak hold from elsewhere.
+                analyzer.resetSmoothing();
+                analyzer.resetPeaks();
+                listener.onFrame(analyzeTape(t, playhead, 0f, 0, false));
+            } else {
+                sleepMs(15);
+            }
+        }
+    }
+
+    private Frame analyzeTape(Tape t, int pos, float smooth, int hop, boolean isPlaying) {
+        int size = analyzer.size();
+        float[] buf = new float[size];
+        float g = gainLinear;
+        int clipped = 0;
+        for (int i = 0; i < size; i++) {
+            int idx = pos - size + i;
+            if (idx < 0 || idx >= t.pcm.length) continue;
+            short s = t.pcm[idx];
+            if (s >= 32767 || s <= -32768) clipped++;
+            buf[i] = s / 32768f * g;
+        }
+        BiquadFilter f = new BiquadFilter();
+        f.setFilter(filter.getType(), t.rate);
+        f.process(buf, size);
+        Frame frame = analyzer.analyze(buf, t.rate, smooth, calibrationDb, clipped, hop > 0 ? hop : size, false);
+        frame.clipPercent = 100f * clipped / size;
+        frame.tape = t;
+        frame.tapePosition = pos;
+        frame.tapePlaying = isPlaying;
+        return frame;
+    }
+
+    private boolean writeTrack(Tape t, int start, int n, float sp) {
+        try {
+            if (track == null || track.getSampleRate() != t.rate) {
+                releaseTrack();
+                int min = AudioTrack.getMinBufferSize(t.rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+                track = new AudioTrack(AudioManager.STREAM_MUSIC, t.rate, AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT, Math.max(min, HOP * 4), AudioTrack.MODE_STREAM);
+                trackSpeed = 0;
+            }
+            if (sp != trackSpeed) {
+                track.setPlaybackRate(Math.round(t.rate * sp));
+                trackSpeed = sp;
+            }
+            if (track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) track.play();
+            return track.write(t.pcm, start, n) > 0;
+        } catch (Exception e) {
+            releaseTrack();
+            return false;
+        }
+    }
+
+    private void pauseTrack() {
+        if (track != null && track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+            try {
+                track.pause();
+                track.flush();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void releaseTrack() {
+        if (track == null) return;
+        try { track.stop(); } catch (Exception ignored) {}
+        track.release();
+        track = null;
     }
 
     private static void sleepMs(long ms) {

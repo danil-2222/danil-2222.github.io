@@ -51,6 +51,49 @@
                 android:layout_height="match_parent"
                 android:visibility="gone" />
         </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/timeline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:background="#0F172A"
+            android:visibility="gone">
+            <LinearLayout style="@style/Row">
+                <TextView
+                    android:id="@+id/txtTapeName"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:ellipsize="middle"
+                    android:textColor="#00F0FF"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/txtTapeTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="monospace"
+                    android:textColor="#E2E8F0"
+                    android:textSize="12sp" />
+            </LinearLayout>
+            <SeekBar
+                android:id="@+id/seekTape"
+                android:layout_width="match_parent"
+                android:layout_height="32dp" />
+            <LinearLayout style="@style/Row">
+                <Button android:id="@+id/btnTapeBack" style="@style/TapeBtn" android:layout_weight="1.1" android:text="◀ кадр" />
+                <Button android:id="@+id/btnTapePlay" style="@style/TapeBtn" android:layout_weight="1" android:text="▶" />
+                <Button android:id="@+id/btnTapeFwd" style="@style/TapeBtn" android:layout_weight="1.1" android:text="кадр ▶" />
+                <Button android:id="@+id/btnTapeSpeed" style="@style/TapeBtn" android:layout_weight="0.8" android:text="1×" />
+                <Button android:id="@+id/btnTapeSave" style="@style/TapeBtn" android:layout_weight="0.9" android:text="WAV" />
+                <Button android:id="@+id/btnTapeClose" style="@style/TapeBtn" android:layout_weight="1.2" android:text="Наживо" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -90,6 +133,10 @@
                     <Button android:id="@+id/btnRecord" style="@style/Btn" android:text="Запис WAV" android:layout_marginStart="6dp" />
                 </LinearLayout>
                 <LinearLayout style="@style/Row">
+                    <Button android:id="@+id/btnTimeMachine" style="@style/Btn" android:text="⟲ Машина часу" android:textColor="#00F0FF" />
+                    <Button android:id="@+id/btnOpenFile" style="@style/Btn" android:text="Відкрити файл" android:textColor="#00F0FF" android:layout_marginStart="6dp" />
+                </LinearLayout>
+                <LinearLayout style="@style/Row">
                     <Button android:id="@+id/btnReference" style="@style/Btn" android:text="Еталон" />
                     <Button android:id="@+id/btnResetPeaks" style="@style/Btn" android:text="Скинути піки" android:layout_marginStart="6dp" />
                     <Button android:id="@+id/btnFullscreen" style="@style/Btn" android:text="На весь екран" android:layout_marginStart="6dp" />
@@ -102,7 +149,7 @@
                 <Spinner android:id="@+id/spinMode" style="@style/Picker" />
                 <TextView style="@style/Label" android:text="Джерело сигналу для аналізу" />
                 <Spinner android:id="@+id/spinSource" style="@style/Picker" />
-                <TextView style="@style/Hint" android:text="Графік: торкніться — курсор, два пальці — масштаб і зсув, подвійний дотик — скинути масштаб, довге натискання — повний екран." />
+                <TextView style="@style/Hint" android:text="Машина часу: застосунок пам'ятає останні 2 хвилини звуку — натисніть, щоб перемотати назад, прослухати чи зберегти. Графік: торкніться — курсор, два пальці — масштаб і зсув, подвійний дотик — скинути масштаб, довге натискання — повний екран." />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/panelDisplay"

@@ -2,10 +2,12 @@ package com.example.audiospectrumpro;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.media.MediaRecorder;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -26,6 +28,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class MainActivity extends Activity implements AudioEngine.Listener, VisualizerView.Callbacks {
     private static final int REQ_MIC = 200;
+    private static final int REQ_OPEN = 201;
+    private static final float[] SPEEDS = {1f, 0.5f, 0.25f};
     private static final int MODE_3D = 4;
     private static final int[] FFT_SIZES = {1024, 2048, 4096, 8192, 16384, 32768};
     private static final int[] RATES = {48000, 44100};
@@ -52,6 +56,13 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private View[] panels;
     private TextView[] tabs;
     private CheckBox chkPlay;
+    private View timeline;
+    private SeekBar seekTape;
+    private TextView txtTapeName, txtTapeTime;
+    private Button btnTapePlay, btnTapeSpeed;
+    private AudioEngine.Tape currentTape;
+    private int savedPlayhead;
+    private boolean loadingFile;
     private Spinner spinFft;
     private SharedPreferences prefs;
 
@@ -104,12 +115,19 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         btnRecord = (Button) findViewById(R.id.btnRecord);
         btnReference = (Button) findViewById(R.id.btnReference);
         chkPlay = (CheckBox) findViewById(R.id.chkPlay);
+        timeline = findViewById(R.id.timeline);
+        seekTape = (SeekBar) findViewById(R.id.seekTape);
+        txtTapeName = text(R.id.txtTapeName);
+        txtTapeTime = text(R.id.txtTapeTime);
+        btnTapePlay = (Button) findViewById(R.id.btnTapePlay);
+        btnTapeSpeed = (Button) findViewById(R.id.btnTapeSpeed);
 
         setupTabs();
         setupButtons();
         setupSpinners();
         setupSliders();
         setupChecks();
+        setupTimeline();
         applyOrientation(getResources().getConfiguration());
         ready = true;
     }
@@ -152,7 +170,9 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
 
     @Override
     public void onBackPressed() {
-        if (fullscreen) onToggleFullscreen(); else super.onBackPressed();
+        if (fullscreen) onToggleFullscreen();
+        else if (currentTape != null) closeTape();
+        else super.onBackPressed();
     }
 
     private void setupTabs() {
@@ -200,7 +220,9 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         });
         btnRecord.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (engine.isRecording()) finishRecording(); else beginRecording();
+                if (engine.isRecording()) finishRecording();
+                else if (currentTape != null) toast("У режимі машини часу запис недоступний — збережіть фрагмент кнопкою WAV");
+                else beginRecording();
             }
         });
         btnReference.setOnClickListener(new View.OnClickListener() {
@@ -209,6 +231,12 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 btnReference.setText(on ? "Еталон ✓" : "Еталон");
                 if (on) toast("Поточний спектр збережено як еталон (пунктир)");
             }
+        });
+        findViewById(R.id.btnTimeMachine).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { enterTimeMachine(); }
+        });
+        findViewById(R.id.btnOpenFile).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickFile(); }
         });
         findViewById(R.id.btnFullscreen).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onToggleFullscreen(); }
@@ -298,13 +326,19 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             }
         });
         spinner(R.id.spinFft, "fft", 2, null, new OnPick() {
-            @Override public void pick(int i) { engine.setFftSize(FFT_SIZES[i]); }
+            @Override public void pick(int i) {
+                engine.setFftSize(FFT_SIZES[i]);
+                updateTapeAnalysis();
+            }
         });
         spinner(R.id.spinWindow, "window", 0, new String[]{
                 "Ганна (універсальне)", "Хеммінга", "Блекмана–Гарріса (мінімум витоку)",
                 "Flat-top (точна амплітуда)", "Прямокутне"
         }, new OnPick() {
-            @Override public void pick(int i) { engine.setWindow(AudioEngine.WindowType.values()[i]); }
+            @Override public void pick(int i) {
+                engine.setWindow(AudioEngine.WindowType.values()[i]);
+                updateTapeAnalysis();
+            }
         });
         spinner(R.id.spinFilter, "filter", 0, new String[]{
                 "Без фільтра", "Режекторний 50 Гц", "ФВЧ 100 Гц", "ФНЧ 5 кГц", "Смуговий 1 кГц", "ФВЧ 500 Гц"
@@ -343,6 +377,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             @Override public void pick(int p) {
                 int db = p - 20;
                 engine.setInputGainDb(db);
+                updateTapeAnalysis();
                 lblGain.setText(String.format(Locale.US, "Підсилення входу: %+d дБ", db));
             }
         });
@@ -350,6 +385,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             @Override public void pick(int p) {
                 calibration = p - 20;
                 engine.setCalibrationDb(calibration);
+                updateTapeAnalysis();
                 lblCal.setText(calibration == 0
                         ? "Калібрування: вимкнено (рівні в dBFS)"
                         : String.format(Locale.US, "Калібрування: %+.0f дБ (0 dBFS = %.0f дБ)", calibration, calibration));
@@ -519,7 +555,12 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     protected void onResume() {
         super.onResume();
         viz3d.onResume();
-        if (resumeOnStart && !engine.isRunning()) startEngine();
+        if (currentTape != null) {
+            ensureEngine();
+            engine.openTape(currentTape, savedPlayhead);
+        } else if (resumeOnStart && !engine.isRunning()) {
+            startEngine();
+        }
         if (chkPlay.isChecked()) player.start();
     }
 
@@ -528,6 +569,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         super.onPause();
         viz3d.onPause();
         player.stop();
+        if (currentTape != null) savedPlayhead = engine.getPlayhead();
         if (engine.isRunning()) stopEngine();
     }
 
@@ -591,6 +633,208 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         txtThdN.setText(tonal ? String.format(Locale.US, f.thdN < 1 ? "THD+N %.3f%%" : "THD+N %.1f%%", f.thdN) : "THD+N —");
         txtSnr.setText(tonal ? String.format(Locale.US, "SNR %.1f dB", f.snr) : "SNR —");
         if (engine.isRecording()) btnRecord.setText("■ " + engine.recordingSeconds() + " с");
+        if (f.tape != null && f.tape == currentTape) {
+            txtTapeTime.setText(VisualizerView.formatTime((float) f.tapePosition / f.tape.rate)
+                    + " / " + VisualizerView.formatTime(f.tape.seconds()));
+            if (!seekDragging) seekTape.setProgress(f.tapePosition / AudioEngine.HOP);
+            btnTapePlay.setText(f.tapePlaying ? "❚❚" : "▶");
+        }
+    }
+
+    // ---------------------------------------------------------------- time machine & files
+
+    private boolean seekDragging;
+
+    private void setupTimeline() {
+        seekTape.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int p, boolean fromUser) {
+                if (fromUser) engine.seek(p * AudioEngine.HOP);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { seekDragging = true; }
+            @Override public void onStopTrackingTouch(SeekBar bar) { seekDragging = false; }
+        });
+        btnTapePlay.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean p = !engine.isPlaying();
+                engine.setPlaying(p);
+                btnTapePlay.setText(p ? "❚❚" : "▶");
+            }
+        });
+        findViewById(R.id.btnTapeBack).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { step(-1); }
+        });
+        findViewById(R.id.btnTapeFwd).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { step(1); }
+        });
+        btnTapeSpeed.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                int i = 0;
+                for (int k = 0; k < SPEEDS.length; k++) if (SPEEDS[k] == engine.getSpeed()) i = k;
+                float sp = SPEEDS[(i + 1) % SPEEDS.length];
+                engine.setSpeed(sp);
+                btnTapeSpeed.setText(sp == 1f ? "1×" : sp == 0.5f ? "½×" : "¼×");
+                if (sp < 1f) toast("Сповільнене відтворення: звук нижчий за тоном, аналіз — справжній");
+            }
+        });
+        findViewById(R.id.btnTapeSave).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { saveTape(); }
+        });
+        findViewById(R.id.btnTapeClose).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeTape(); }
+        });
+    }
+
+    private void step(int frames) {
+        engine.setPlaying(false);
+        btnTapePlay.setText("▶");
+        engine.seek(engine.getPlayhead() + frames * AudioEngine.HOP);
+    }
+
+    @Override
+    public void onSeek(int samplePosition) {
+        engine.seek(samplePosition);
+    }
+
+    private void ensureEngine() {
+        if (engine.isRunning()) return;
+        engine.start(hasMic());
+        resumeOnStart = true;
+        onEngineStateChanged();
+    }
+
+    private void updateTapeAnalysis() {
+        if (viz2d == null) return;
+        float gainDb = (float) (20 * Math.log10(engine.getGainLinear()));
+        viz2d.setTapeAnalysis(engine.getFftSize(), engine.getWindow(), gainDb + engine.getCalibrationDb());
+    }
+
+    private void enterTimeMachine() {
+        if (currentTape != null) {
+            toast("Машина часу вже відкрита");
+            return;
+        }
+        AudioEngine.Tape t = engine.captureHistory();
+        if (t == null || t.pcm.length < AudioEngine.HOP * 4) {
+            toast("Історія ще порожня — запустіть аналіз і зачекайте кілька секунд");
+            return;
+        }
+        if (engine.isRecording()) finishRecording();
+        openTape(t, t.pcm.length);
+        toast("Машина часу: " + Math.round(t.seconds()) + " с історії. Тягніть повзунок або торкніться спектрограми");
+    }
+
+    private void openTape(AudioEngine.Tape t, int position) {
+        currentTape = t;
+        savedPlayhead = position;
+        ensureEngine();
+        engine.setSpeed(1f);
+        btnTapeSpeed.setText("1×");
+        engine.openTape(t, position);
+        txtTapeName.setText((t.history ? "⟲ " : "♪ ") + t.name + "  ·  " + t.rate + " Гц");
+        seekTape.setMax(Math.max(1, t.pcm.length / AudioEngine.HOP));
+        seekTape.setProgress(position / AudioEngine.HOP);
+        timeline.setVisibility(View.VISIBLE);
+        engine.setFrozen(false);
+        btnFreeze.setText("Пауза");
+        viz2d.setTape(t);
+        updateTapeAnalysis();
+    }
+
+    private void closeTape() {
+        engine.closeTape();
+        currentTape = null;
+        timeline.setVisibility(View.GONE);
+        viz2d.setTape(null);
+        if (!resumeOnStart && engine.isRunning()) stopEngine();
+    }
+
+    private void pickFile() {
+        if (loadingFile) { toast("Файл ще завантажується…"); return; }
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("audio/*");
+        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"audio/*", "video/*", "application/ogg"});
+        try {
+            startActivityForResult(i, REQ_OPEN);
+        } catch (Exception e) {
+            toast("Не знайдено програми для вибору файлів");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_OPEN && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            loadFile(data.getData());
+        }
+    }
+
+    void loadFile(final Uri uri) {
+        loadingFile = true;
+        toast("Відкриваю файл…");
+        timeline.setVisibility(View.VISIBLE);
+        txtTapeName.setText("Завантаження…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    final AudioFileLoader.Result r = AudioFileLoader.load(MainActivity.this, uri,
+                            new AudioFileLoader.Progress() {
+                                @Override public void onProgress(final int percent) {
+                                    runOnUiThread(new Runnable() {
+                                        @Override public void run() { txtTapeName.setText("Завантаження… " + percent + " %"); }
+                                    });
+                                }
+                            });
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            loadingFile = false;
+                            if (currentTape != null) engine.closeTape();
+                            openTape(r.tape, 0);
+                            String msg = r.tape.name + ": " + VisualizerView.formatTime(r.tape.seconds());
+                            if (r.truncated) msg += " (обрізано до " + AudioFileLoader.MAX_SECONDS / 60 + " хв)";
+                            toast(msg);
+                        }
+                    });
+                } catch (final Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            loadingFile = false;
+                            if (currentTape == null) timeline.setVisibility(View.GONE);
+                            else txtTapeName.setText((currentTape.history ? "⟲ " : "♪ ") + currentTape.name);
+                            toast(e.getMessage() != null ? e.getMessage() : "Не вдалося відкрити файл");
+                        }
+                    });
+                } catch (final OutOfMemoryError e) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            loadingFile = false;
+                            if (currentTape == null) timeline.setVisibility(View.GONE);
+                            toast("Файл завеликий для пам'яті телефона");
+                        }
+                    });
+                }
+            }
+        }, "FileLoader").start();
+    }
+
+    private void saveTape() {
+        final AudioEngine.Tape t = currentTape;
+        if (t == null) return;
+        toast("Зберігаю WAV…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                String msg;
+                try {
+                    msg = "WAV збережено: " + Exporter.saveTape(MainActivity.this, t);
+                } catch (Exception e) {
+                    msg = "Помилка збереження: " + e.getMessage();
+                }
+                final String m = msg;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { toast(m); }
+                });
+            }
+        }, "TapeSaver").start();
     }
 
     private void toast(String s) {

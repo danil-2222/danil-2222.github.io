@@ -56,6 +56,15 @@ final class Exporter {
         return t.location;
     }
 
+    /** Writes a tape (e.g. the time-machine history) as a WAV into the shared Music folder. */
+    static String saveTape(Context ctx, AudioEngine.Tape tape) throws IOException {
+        File tmp = new File(ctx.getCacheDir(), (tape.history ? "history_" : "clip_") + stamp() + ".wav");
+        WavWriter w = new WavWriter(tmp, tape.rate);
+        w.writePcm(tape.pcm, 0, tape.pcm.length);
+        w.close();
+        return saveWav(ctx, tmp);
+    }
+
     /** Copies a finished WAV from app storage to the shared Music folder and deletes the temp file. */
     static String saveWav(Context ctx, File tmp) throws IOException {
         Target t = open(ctx, tmp.getName(), "audio/wav", MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
