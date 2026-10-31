@@ -2047,4 +2047,58 @@ public class MicCheck {
         check("Закон −6 дБ", ok, sb + "(теорія для вулиці −6,02)");
         System.out.println("REPORT24\n" + String.join("\n", report));
     }
+
+    /** The same "pink" sines as the source, each scaled by a barrier's attenuation (dB) at its frequency. */
+    static float[] pinkThrough(Curve attenDb, double sec) {
+        Random r = new Random(3);
+        int count = 420;
+        float[] out = new float[(int) (sec * RATE)];
+        for (int s = 0; s < count; s++) {
+            int f = (int) Math.round(88 * Math.pow(2, 7.0 * s / count));
+            double ph = r.nextDouble() * 2 * Math.PI, w = 2 * Math.PI * f / 48000, g = 0.004 * Math.pow(10, -attenDb.at(f) / 20);
+            for (int i = 0; i < out.length; i++) out[i] += (float) (g * Math.sin(w * i + ph));
+        }
+        return out;
+    }
+
+    @Test
+    public void insulation() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 69);
+        Object e = get(a, "insulation");
+        setField(e, "source", false);
+        // A door: 8 dB at 125 Hz growing 4 dB per octave.  A pillow: little at low notes, a lot up high.
+        Curve none = new Curve() { public double at(double f) { return 0; } };
+        Curve door = new Curve() { public double at(double f) { return 8 + 4 * Math.log(f / 125) / Math.log(2); } };
+        Curve pillow = new Curve() { public double at(double f) { return 2 + 0.002 * f; } };
+        Curve[] scenes = {none, door, pillow};
+        String[] names = {null, "Двері", "Подушка"};
+        for (int i = 0; i < 3; i++) {
+            mic(pinkThrough(scenes[i], 4), true);
+            run(500);
+            call(e, "record", new Class<?>[]{String.class}, names[i]);
+            run(3500);
+        }
+        shot(a, "99_insulation");
+        float[] bands = (float[]) staticField("InsulationExperiment", "BANDS");
+        StringBuilder sb = new StringBuilder();
+        boolean ok = (Integer) call(e, "barrierCount", new Class<?>[]{}) == 2;
+        for (int b = 1; b < 3 && ok; b++) {
+            float[] at = (float[]) call(e, "attenuation", new Class<?>[]{int.class}, b - 1);
+            sb.append(names[b]).append(": ");
+            for (int k2 = 0; k2 < bands.length; k2++) {
+                double want = scenes[b].at(bands[k2]);
+                ok &= Math.abs(at[k2] - want) < 1.5;
+                sb.append(String.format("%.0f/%.0f ", at[k2], want));
+            }
+            sb.append("; ");
+        }
+        check("Звукоізоляція по октавах", ok, "виміряно/задано дБ (125 Гц … 8 кГц) — " + sb);
+        System.out.println("REPORT25\n" + String.join("\n", report));
+    }
 }

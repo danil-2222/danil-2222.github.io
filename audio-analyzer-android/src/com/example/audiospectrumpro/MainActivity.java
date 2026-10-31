@@ -1042,6 +1042,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 66, "Швидкість звуку з трубки", "Подуйте над трубкою — її нота розкаже про повітря"},
             {7, 67, "Рулетка зі звуку (2 телефони)", "Відстань між телефонами — з точністю до сантиметрів"},
             {7, 68, "Закон −6 дБ (2 телефони)", "Удвічі далі — на скільки тихіше?"},
+            {7, 69, "Звукоізоляція (2 телефони)", "Що краще глушить: двері, подушка чи вікно?"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2648,6 +2649,43 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "луну, і вдалині вона «доливає» гучність. Спробуйте в різних місцях — у коридорі, на вулиці, у ванній!";
     }
 
+    private InsulationExperiment insulation;
+
+    private String lessonInsulation() {
+        ensureLive(0);
+        stopBuffer();
+        if (insulation == null) {
+            insulation = new InsulationExperiment(density(), new InsulationExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final InsulationExperiment e = insulation;
+        viz2d.showLesson(e);
+        dynSpinner("Цей телефон", new String[]{"Вимірює", "Джерело шуму"}, e.source ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { e.source = i == 1; e.start(); viz2d.invalidate(); }
+        });
+        dynButton(dyn, "1️⃣ Записати без перешкоди", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.record(null); }
+        });
+        final EditText name = dynEdit("Назва перешкоди (двері, подушка…)", "");
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "2️⃣ Записати з перешкодою", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.record(name.getText().toString().trim()); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "Стерти", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.clear(); viz2d.invalidate(); }
+        });
+        return "Що краще глушить звук? Джерело шуму і вимірювальний телефон стоять на тих самих місцях весь час. "
+                + "Спершу запишіть рівень без нічого між ними. Потім ставте перешкоду: зачиніть двері, накрийте "
+                + "джерело подушкою, коробкою, ковдрою, поставте за вікно — і щоразу записуйте (до 4 перешкод).\n\n"
+                + "Стовпчики показують, скільки децибелів «з'їла» перешкода в кожній октаві: від басу (125 Гц) до "
+                + "дзвону (8 кГц). Майже завжди високі звуки глушаться набагато краще, ніж низькі — тому крізь стіну "
+                + "чути бас сусідської музики, а слова — ні. Важкі й щільні перешкоди глушать краще за легкі й "
+                + "пухкі, а щілини «пропускають» звук, як вода крізь дірку.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2989,6 +3027,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 66: text = lessonTube(); break;
             case 67: text = lessonRuler(); break;
             case 68: text = lessonDistanceLaw(); break;
+            case 69: text = lessonInsulation(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
