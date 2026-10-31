@@ -23,13 +23,39 @@ final class SignalGenerator {
     static volatile float[] buffer = new float[0];
     static volatile int bufferVersion;
     static volatile boolean bufferLoop;
+    /** Ten-band equaliser applied to everything the generator produces (octave bands 31 Hz .. 16 kHz). */
+    static final float[] EQ_HZ = {31.5f, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
+    static final float[] eqGains = new float[EQ_HZ.length];
+    static volatile int eqVersion;
+    static volatile boolean eqOn;
 
     private final Random random = new Random();
     private double phase, phase2, sweepT;
     private float b0, b1, b2, b3, b4, b5, b6;
     private int bufferPos, seenVersion = -1;
+    private final BiquadFilter[] eq = new BiquadFilter[EQ_HZ.length];
+    private int eqSeen = -1, eqRate;
+
+    /** Applies the shared equaliser (rebuilding this instance's filters when settings change). */
+    private void equalise(float[] out, int len, int sampleRate) {
+        if (!eqOn) return;
+        if (eqSeen != eqVersion || eqRate != sampleRate) {
+            eqSeen = eqVersion;
+            eqRate = sampleRate;
+            for (int b = 0; b < eq.length; b++) {
+                if (eq[b] == null) eq[b] = new BiquadFilter();
+                if (EQ_HZ[b] < sampleRate / 2f) eq[b].setPeaking(EQ_HZ[b], 1.4, eqGains[b], sampleRate);
+            }
+        }
+        for (BiquadFilter f : eq) if (f != null) f.process(out, len);
+    }
 
     void fill(float[] out, int len, int sampleRate) {
+        fillRaw(out, len, sampleRate);
+        equalise(out, len, sampleRate);
+    }
+
+    private void fillRaw(float[] out, int len, int sampleRate) {
         Waveform wf = waveform;
         float vol = level;
         if (wf == Waveform.BUFFER) {

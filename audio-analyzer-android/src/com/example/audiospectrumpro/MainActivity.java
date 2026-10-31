@@ -50,7 +50,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     };
     private static final int WAVE_BUFFER = 10;
     /** Mode spinner position -> index into MODES_2D: analyzer modes, then live learning views. */
-    private static final int[] SPINNER_MODES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12};
+    private static final int[] SPINNER_MODES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, -1, -2, -3, -4, -5};
     private static final int MODE_PITCH = 8, MODE_CHROMA = 9, MODE_INTERVALS = 10, MODE_AIR = 11, MODE_ECHO = 12,
             MODE_SAMPLING = 13, WAVE_INTERVAL = 9;
     private static final String[] INTERVAL_NAMES = {"Унісон", "Мала секунда", "Велика секунда", "Мала терція",
@@ -305,7 +305,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 "Спектр (лінія)", "Спектр (стовпчики)", "1/3 октави (RTA)", "Спектрограма (водоспад)",
                 "3D водоспад (OpenGL)", "Осцилограф", "Тюнер",
                 "🎓 Фур'є: кола", "🎓 Мелодія голосу", "🎓 Нотне коло (ноти й акорди)",
-                "🎓 Звук у повітрі", "🎓 Луна кімнати (RT60)"
+                "🎓 Звук у повітрі", "🎓 Луна кімнати (RT60)", "🎓 Равлик вуха", "🎓 Струна, що співає",
+                "🎓 Огинаюча звуку (ADSR)", "🎓 Фігури Хладні", "🎓 Що чує вухо (рівна гучність)"
         }, new OnPick() {
             @Override public void pick(int i) { applyMode(i); }
         });
@@ -331,7 +332,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 } else {
                     viz3d.setVisibility(View.GONE);
                     viz2d.setVisibility(View.VISIBLE);
-                    viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
+                    if (SPINNER_MODES[i] < 0) viz2d.showLesson(liveView(SPINNER_MODES[i]));
+                    else viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
                 }
     }
 
@@ -807,7 +809,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             viz2d.setVisibility(View.GONE);
             viz3d.setVisibility(View.VISIBLE);
         } else {
-            viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
+            if (SPINNER_MODES[i] < 0) viz2d.showLesson(liveView(SPINNER_MODES[i]));
+            else viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
         }
         if (resumeOnStart) startEngine();
     }
@@ -971,17 +974,19 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     // ---------------------------------------------------------------- Sound Academy navigation
 
     private static final String[] CATEGORIES = {"Основи звуку", "Музика і голос", "Фізика й техніка",
-            "Передача й творчість", "Ігри"};
+            "Слух і сприйняття", "Передача й творчість", "Ігри"};
     private static final String[] CATEGORY_DESC = {
-            "Тон, гармоніки, ряд Фур'є, шум, звук у повітрі",
-            "Мелодія голосу, акорди, інтервали, ефекти голосу, пляшка",
-            "Луна, дискретизація, стоячі хвилі, швидкість звуку, слух",
+            "Тон, гармоніки, струна, ряд Фур'є, шум, звук у повітрі",
+            "Мелодія голосу, акорди, інтервали, огинаюча, еквалайзер, ефекти, пляшка",
+            "Луна, дискретизація, стоячі хвилі, швидкість звуку, Хладні, інтерференція",
+            "Равлик вуха, що чує вухо, межа слуху",
             "Малюнок у звук, звуковий модем, азбука Морзе",
             "Тренажер слуху і тренажер ритму"};
     /** {category, lesson id, title, one-line description} */
     private static final Object[][] LESSONS = {
             {0, 1, "Чистий тон", "Свисніть — один пік на спектрі"},
             {0, 2, "Гармоніки", "Заспівайте «а-а-а» — бачите f0, 2×f0, 3×f0"},
+            {0, 24, "Струна, що співає", "Співайте — струна коливається з вашими гармоніками"},
             {0, 3, "Звук із кіл", "Ряд Фур'є і конструктор гармонік"},
             {0, 4, "Меандр", "Чому в ньому лише непарні гармоніки"},
             {0, 5, "Шум проти тону", "Суцільна заливка замість ліній"},
@@ -989,19 +994,25 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {1, 7, "Мелодія голосу", "Висота голосу в часі на нотних лініях"},
             {1, 8, "Нотне коло", "Які ноти звучать і який це акорд"},
             {1, 9, "Інтервали", "Чому одні поєднання звучать гарно"},
+            {1, 25, "Огинаюча звуку (ADSR)", "Чому піаніно і скрипка на одній ноті звучать по-різному"},
+            {1, 28, "Еквалайзер своїми руками", "Бас, середина, високі — і що вони роблять зі звуком"},
             {1, 16, "Ефекти голосу", "Гелій, робот, телефон, луна — і що вони роблять зі спектром"},
             {1, 15, "Музична пляшка", "Резонанс: нота з пляшки і скільки налити води"},
             {2, 11, "Луна кімнати", "Ляск у долоні і час згасання RT60"},
             {2, 12, "Дискретизація", "Як телефон «бачить» звук; аліасинг"},
             {2, 17, "Стоячі хвилі", "Гучні й тихі місця кімнати на низьких нотах"},
             {2, 18, "Швидкість звуку", "Ляск перед стіною → 343 м/с"},
-            {2, 6, "Межа слуху", "Свіп 20 Гц – 20 кГц: де ви перестаєте чути"},
+            {3, 23, "Равлик вуха", "Як вухо саме розкладає звук на частоти"},
+            {3, 29, "Що чує вухо, а що — прилад", "Криві рівної гучності: чому бас «зникає»"},
+            {3, 6, "Межа слуху", "Свіп 20 Гц – 20 кГц: де ви перестаєте чути"},
+            {2, 26, "Фігури Хладні", "Пісок на пластині малює звук"},
+            {2, 27, "Інтерференція", "Два динаміки: де звук підсилюється, а де гасне"},
             {2, 22, "Ехолот", "Відстань звуком, навіть ультразвуком"},
-            {3, 13, "Малюнок у звук", "Намалюйте — і побачте малюнок на спектрограмі"},
-            {3, 14, "Звуковий модем", "Передайте текст звуком між телефонами"},
-            {3, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
-            {4, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
-            {4, 21, "Тренажер ритму", "Плескайте під метроном — мілісекунди точності"},
+            {4, 13, "Малюнок у звук", "Намалюйте — і побачте малюнок на спектрограмі"},
+            {4, 14, "Звуковий модем", "Передайте текст звуком між телефонами"},
+            {4, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
+            {5, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
+            {5, 21, "Тренажер ритму", "Плескайте під метроном — мілісекунди точності"},
     };
 
     private LinearLayout dyn;
@@ -1099,6 +1110,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private void leaveLesson() {
         if (activeLesson == 0) return;
         activeLesson = 0;
+        SignalGenerator.eqOn = false;
         chkPlay.setChecked(false);
         ((Button) findViewById(R.id.btnListen)).setText("▶ Слухати");
         if (currentTape != null) closeTape();
@@ -1638,6 +1650,253 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "розкид у межах ±10–20 мс. Спробуйте повільний і швидкий темп — що легше?";
     }
 
+    // ---------------------------------------------------------------- visual lessons (v8)
+
+    private CochleaLesson cochleaLesson;
+    private StringLesson stringLesson;
+    private EnvelopeLesson envelopeLesson;
+    private ChladniLesson chladniLesson;
+    private InterferenceLesson interferenceLesson;
+    private EqualizerLesson equalizerLesson;
+    private LoudnessLesson loudnessLesson;
+
+    private CochleaLesson cochlea() { if (cochleaLesson == null) cochleaLesson = new CochleaLesson(density()); return cochleaLesson; }
+    private StringLesson string() { if (stringLesson == null) stringLesson = new StringLesson(density()); return stringLesson; }
+    private EnvelopeLesson envelope() { if (envelopeLesson == null) envelopeLesson = new EnvelopeLesson(density()); return envelopeLesson; }
+    private ChladniLesson chladni() { if (chladniLesson == null) chladniLesson = new ChladniLesson(density()); return chladniLesson; }
+    private LoudnessLesson loudness() { if (loudnessLesson == null) loudnessLesson = new LoudnessLesson(density()); return loudnessLesson; }
+
+    /** Live lesson views that can also be picked as a display mode (negative codes in SPINNER_MODES). */
+    private LessonView liveView(int code) {
+        switch (code) {
+            case -1: return cochlea();
+            case -2: return string();
+            case -3: return envelope();
+            case -4: chladni().live = true; return chladni();
+            default: return loudness();
+        }
+    }
+
+    private String lessonCochlea() {
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(cochlea());
+        final Button sweep = dynButton(dyn, "▶ Свіп через динамік: подивіться, як «біжить» звук", null);
+        sweep.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean on = !chkPlay.isChecked();
+                SignalGenerator.waveform = SignalGenerator.Waveform.LOG_SWEEP;
+                select(R.id.spinWave, 6);
+                chkPlay.setChecked(on);
+                sweep.setText(on ? "■ Зупинити свіп" : "▶ Свіп через динамік: подивіться, як «біжить» звук");
+            }
+        });
+        return "Усередині вуха — равлик, скручена трубка з рідиною, а вздовж неї натягнута мембрана. Біля входу вона "
+                + "вузька й туга і відгукується на високі звуки, у глибині — широка й м'яка і відгукується на низькі.\n\n"
+                + "Тобто вухо саме розкладає звук на частоти — як цей застосунок! Кожна волоскова клітина «слухає» свою "
+                + "частоту. Свисніть: засвітиться одне місце. Скажіть «ш-ш-ш»: засвітиться біля входу. Низький гул — у глибині. "
+                + "З віком першими зношуються клітини біля входу, тому слабшає чутність високих звуків.";
+    }
+
+    private String lessonString() {
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(string());
+        LinearLayout row = dynRow();
+        dynButton(row, "🎙 Мікрофон", new View.OnClickListener() {
+            @Override public void onClick(View v) { chkPlay.setChecked(false); select(R.id.spinSource, 0); }
+        });
+        dynButton(row, "🎹 Демо: пилка", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                harmF0 = 196;
+                applyPreset(PRESETS[1]);
+                select(R.id.spinSource, 1);
+            }
+        });
+        dynButton(row, "🎹 Демо: кларнет", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                harmF0 = 196;
+                applyPreset(PRESETS[3]);
+                select(R.id.spinSource, 1);
+            }
+        });
+        return "Струна, затиснута з двох кінців, може коливатися лише так, щоб на кінцях були вузли: цілою дугою (1×), "
+                + "двома половинками (2×), трьома третинами (3×)… Кожен такий спосіб — мода, і звучить вона на кратній "
+                + "частоті. Звідси гармоніки!\n\n"
+                + "Справжня струна коливається всіма модами одразу — угорі видно їхню суму. Заспівайте ноту: "
+                + "застосунок знайде гармоніки вашого голосу й покаже, яка струна звучала б так само. Порівняйте демо "
+                + "«пилка» (всі моди) і «кларнет» (лише непарні).";
+    }
+
+    private String lessonEnvelope() {
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(envelope());
+        return "Огинаюча — це як змінюється гучність протягом одного звуку. Її описують чотирма фазами:\n"
+                + "A (attack) — наростання, D (decay) — спад після піку, S (sustain) — витримка, R (release) — згасання.\n\n"
+                + "Ляскніть у долоні, смикніть струну, вдарте ложкою по чашці, а потім протягніть «а-а-а» чи заграйте "
+                + "на дудочці. Навіть на однаковій ноті ми розрізняємо інструменти саме за огинаючою: піаніно — удар і "
+                + "згасання, скрипка — плавний початок і довга витримка.";
+    }
+
+    private String lessonChladni() {
+        ensureLive(0);
+        stopBuffer();
+        final ChladniLesson ch = chladni();
+        ch.live = true;
+        viz2d.showLesson(ch);
+        dynSpinner("Що «грає» на пластину", new String[]{"Мікрофон: свистіть або співайте", "Генератор: повзунок частоти"}, 0,
+                new OnPick() {
+                    @Override public void pick(int i) { ch.live = i == 0; viz2d.invalidate(); }
+                });
+        dynSlider("Частота генератора: %.0f Гц", "chladniHz", 1000, 450, new Value() {
+            @Override public float of(int p) { return (float) (100 * Math.pow(40, p / 1000.0)); }
+        }, new OnPick() {
+            @Override public void pick(int p) {
+                ch.driveHz = (float) (100 * Math.pow(40, p / 1000.0));
+                if (SignalGenerator.waveform == SignalGenerator.Waveform.SINE) SignalGenerator.frequency = ch.driveHz;
+            }
+        });
+        final Button play = dynButton(dyn, "▶ Озвучити тон", null);
+        play.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean on = !chkPlay.isChecked();
+                SignalGenerator.waveform = SignalGenerator.Waveform.SINE;
+                select(R.id.spinWave, 0);
+                SignalGenerator.frequency = ch.driveHz;
+                chkPlay.setChecked(on);
+                play.setText(on ? "■ Тиша" : "▶ Озвучити тон");
+            }
+        });
+        return "У XVIII столітті Ернст Хладні сипав пісок на металеву пластину і водив по краю смичком. Пластина "
+                + "коливалася, і пісок зістрибував з місць, що рухаються, збираючись на нерухомих лініях — вузлах.\n\n"
+                + "Кожна частота резонансу дає свій візерунок. Свистіть вище й нижче або рухайте повзунок: що вища "
+                + "частота, то більше ліній і дрібніший малюнок. Ті самі вузли й пучності, що у струни, тільки у двох вимірах. "
+                + "Так перевіряють деки скрипок і гітар.";
+    }
+
+    private String lessonInterference() {
+        if (interferenceLesson == null) interferenceLesson = new InterferenceLesson(density());
+        final InterferenceLesson il = interferenceLesson;
+        stopBuffer();
+        viz2d.showLesson(il);
+        dynSlider("Частота: %.0f Гц", "interfHz", 1000, 600, new Value() {
+            @Override public float of(int p) { return (float) (100 * Math.pow(20, p / 1000.0)); }
+        }, new OnPick() {
+            @Override public void pick(int p) { il.freqHz = (float) (100 * Math.pow(20, p / 1000.0)); }
+        });
+        LinearLayout row = dynRow();
+        final Button phase = dynButton(row, "Протифаза: ні", null);
+        phase.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                il.antiPhase = !il.antiPhase;
+                phase.setText(il.antiPhase ? "Протифаза: так" : "Протифаза: ні");
+            }
+        });
+        final Button view = dynButton(row, "Показати гучність", null);
+        view.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                il.loudnessView = !il.loudnessView;
+                view.setText(il.loudnessView ? "Показати хвилю" : "Показати гучність");
+            }
+        });
+        return "Два динаміки грають одну ноту. Де гребінь однієї хвилі зустрічає гребінь іншої — звук підсилюється, "
+                + "де гребінь зустрічає западину — гасне. Виходять смуги гучних і тихих місць.\n\n"
+                + "Перетягніть динаміки пальцем, змініть частоту: що вища нота (коротша хвиля), то частіші смуги. "
+                + "Увімкніть «протифазу» — посередині між динаміками стане тихо. На цьому принципі працює шумоподавлення "
+                + "в навушниках: мікрофон чує шум, а динамік грає його ж у протифазі.";
+    }
+
+    private String lessonEqualizer() {
+        if (equalizerLesson == null) equalizerLesson = new EqualizerLesson(density());
+        ensureLive(1);
+        SignalGenerator.eqOn = true;
+        SignalGenerator.eqVersion++;
+        viz2d.showLesson(equalizerLesson);
+        final float[][] sources = new float[1][];
+        dynSpinner("Що звучить", new String[]{"Музика (акорди, бас, тарілки)", "Рожевий шум", "Ваш запис (останні 4 с)"}, 0,
+                new OnPick() {
+                    @Override public void pick(int i) {
+                        if (i == 0) sources[0] = EqualizerLesson.music(48000);
+                        else if (i == 1) {
+                            float[] n = new float[48000 * 4];
+                            SignalGenerator g = new SignalGenerator();
+                            SignalGenerator.Waveform keep = SignalGenerator.waveform;
+                            SignalGenerator.waveform = SignalGenerator.Waveform.PINK_NOISE;
+                            float lvl = SignalGenerator.level;
+                            SignalGenerator.level = 0.5f;
+                            boolean eq = SignalGenerator.eqOn;
+                            SignalGenerator.eqOn = false;
+                            g.fill(n, n.length, 48000);
+                            SignalGenerator.eqOn = eq;
+                            SignalGenerator.level = lvl;
+                            SignalGenerator.waveform = keep;
+                            sources[0] = n;
+                        } else {
+                            AudioEngine.Tape h = engine.captureHistory();
+                            if (h == null) { toast("Історія порожня"); return; }
+                            int n = Math.min(h.pcm.length, h.rate * 4);
+                            float[] x = new float[n];
+                            for (int k = 0; k < n; k++) x[k] = h.pcm[h.pcm.length - n + k] / 32768f;
+                            LessonKit.normalize(x, 0.5f);
+                            sources[0] = x;
+                        }
+                        if (chkPlay.isChecked()) playBuffer(sources[0], true);
+                    }
+                });
+        LinearLayout row = dynRow();
+        for (int i = 0; i < 3; i++) {
+            final int p = i;
+            dynButton(row, EqualizerLesson.PRESETS[i], new View.OnClickListener() {
+                @Override public void onClick(View v) { EqualizerLesson.setGains(EqualizerLesson.PRESET_GAINS[p]); viz2d.invalidate(); }
+            });
+        }
+        LinearLayout row2 = dynRow();
+        for (int i = 3; i < EqualizerLesson.PRESETS.length; i++) {
+            final int p = i;
+            dynButton(row2, EqualizerLesson.PRESETS[i], new View.OnClickListener() {
+                @Override public void onClick(View v) { EqualizerLesson.setGains(EqualizerLesson.PRESET_GAINS[p]); viz2d.invalidate(); }
+            });
+        }
+        final Button play = dynButton(dyn, "▶ Слухати", null);
+        play.setTextColor(0xFF00F0FF);
+        play.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (chkPlay.isChecked()) { stopBuffer(); play.setText("▶ Слухати"); return; }
+                if (sources[0] == null) sources[0] = EqualizerLesson.music(48000);
+                playBuffer(sources[0], true);
+                play.setText("■ Тиша");
+            }
+        });
+        return "Еквалайзер підсилює або послаблює окремі смуги частот — як ручки «бас» і «високі» на колонці, "
+                + "тільки їх десять. Кожен кружечок — фільтр на одній октаві.\n\n"
+                + "Увімкніть музику й потягніть кружечки: синя заливка — спектр того, що звучить, жовта лінія — "
+                + "що робить еквалайзер. Спробуйте «Телефон»: лишається тільки середина, і звук стає «плоским». "
+                + "Приберіть 2–4 кГц — голос стане далеким; підніміть — зблизиться. Так звукорежисери «розставляють» "
+                + "інструменти в міксі.";
+    }
+
+    private String lessonLoudness() {
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(loudness());
+        dynButton(dyn, "▶ Почути: 50 Гц, 1 кГц і 4 кГц з однаковою силою", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                int rate = 48000;
+                float[] pcm = new float[rate * 4];
+                float[] f = {50, 1000, 4000};
+                for (int i = 0; i < 3; i++) LessonKit.addTone(pcm, i * rate * 4 / 3, rate, f[i], 0.6f, rate, rate / 50);
+                playBuffer(pcm, false);
+            }
+        });
+        return "Мікрофон чесно міряє тиск, а вухо — ні. Ми найкраще чуємо 2–5 кГц (там плач дитини й шипіння змії), "
+                + "а бас і дуже високі звуки — значно гірше. Тихий бас просто «зникає».\n\n"
+                + "Лінії на графіку — криві рівної гучності: усі точки однієї лінії здаються вуху однаково гучними. "
+                + "Рожева — поріг чутності, нижче неї звук не чути взагалі. Стовпчики — ваш звук зараз, колір — наскільки "
+                + "гучно його чує вухо (у фонах).\n\n"
+                + "Тому гучномовець «тонкоком» додає басу на малій гучності, а сирени пищать на 2–4 кГц.";
+    }
+
     private void runExperiment(int n) {
         if (currentTape != null) closeTape();
         ((CheckBox) findViewById(R.id.chkHints)).setChecked(true);
@@ -1656,6 +1915,13 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 19: text = lessonMorse(); break;
             case 20: text = lessonEar(); break;
             case 21: text = lessonRhythm(); break;
+            case 23: text = lessonCochlea(); break;
+            case 24: text = lessonString(); break;
+            case 25: text = lessonEnvelope(); break;
+            case 26: text = lessonChladni(); break;
+            case 27: text = lessonInterference(); break;
+            case 28: text = lessonEqualizer(); break;
+            case 29: text = lessonLoudness(); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
                 select(R.id.spinSource, 0);

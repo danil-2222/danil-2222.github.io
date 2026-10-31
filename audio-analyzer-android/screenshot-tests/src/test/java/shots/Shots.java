@@ -572,4 +572,60 @@ public class Shots {
         run(2500);
         shot(a, "43_voicefx");
     }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void visualLessons() throws Exception {
+        MainActivity a = setup();
+        int rate = 48000;
+
+        lesson(a, 23);
+        select(a, "spinSource", 1);
+        gen("SAWTOOTH", 300, 0.4f);
+        run(1500);
+        shot(a, "46_cochlea");
+
+        lesson(a, 24);
+        clickText(a, "🎹 Демо: пилка");
+        run(2000);
+        shot(a, "47_string");
+
+        lesson(a, 25);
+        select(a, "spinSource", 1);
+        float[] pluck = new float[rate * 3];
+        Class<?> kit = Class.forName("com.example.audiospectrumpro.LessonKit");
+        java.lang.reflect.Method note = kit.getDeclaredMethod("addNote", float[].class, int.class, int.class, double.class, float.class, int.class);
+        note.setAccessible(true);
+        note.invoke(null, pluck, rate / 2, rate * 2, 220.0, 0.8f, rate);
+        buffer(pluck, false);
+        run(3000);
+        shot(a, "48_envelope");
+
+        lesson(a, 26);
+        select(a, "spinSource", 1);
+        gen("SINE", 900, 0.4f);
+        run(1200);
+        shot(a, "49_chladni_900");
+        gen("SINE", 2600, 0.4f);
+        run(1200);
+        shot(a, "50_chladni_2600");
+
+        lesson(a, 27);
+        run(600);
+        shot(a, "51_interference");
+        clickText(a, "Показати гучність");
+        run(400);
+        shot(a, "52_interference_loudness");
+
+        lesson(a, 28);
+        clickText(a, "Телефон");
+        clickText(a, "▶ Слухати");
+        run(2500);
+        shot(a, "53_equalizer");
+
+        lesson(a, 29);
+        select(a, "spinSource", 1);
+        gen("PINK_NOISE", 440, 0.3f);
+        run(2000);
+        shot(a, "54_loudness");
+    }
 }

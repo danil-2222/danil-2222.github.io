@@ -58,6 +58,28 @@ public class BiquadFilter {
         a2 = (float) ((1 - alpha) / a0);
     }
 
+    /** RBJ peaking EQ: boosts or cuts gainDb around fc. */
+    public synchronized void setPeaking(double fc, double q, double gainDb, float sampleRate) {
+        type = Type.CUSTOM;
+        double a = Math.pow(10, gainDb / 40), w0 = 2 * Math.PI * fc / sampleRate;
+        double alpha = Math.sin(w0) / (2 * q), c = Math.cos(w0), a0 = 1 + alpha / a;
+        b0 = (float) ((1 + alpha * a) / a0);
+        b1 = (float) (-2 * c / a0);
+        b2 = (float) ((1 - alpha * a) / a0);
+        a1 = (float) (-2 * c / a0);
+        a2 = (float) ((1 - alpha / a) / a0);
+    }
+
+    /** Magnitude response in dB at frequency f. */
+    public synchronized double magnitudeDb(double f, float sampleRate) {
+        if (type == Type.ALLPASS) return 0;
+        double w = 2 * Math.PI * f / sampleRate;
+        double c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+        double nr = b0 + b1 * c1 + b2 * c2, ni = -(b1 * s1 + b2 * s2);
+        double dr = 1 + a1 * c1 + a2 * c2, di = -(a1 * s1 + a2 * s2);
+        return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di) + 1e-20);
+    }
+
     public synchronized void process(float[] buf, int len) {
         if (type == Type.ALLPASS) return;
         for (int i = 0; i < len; i++) {
