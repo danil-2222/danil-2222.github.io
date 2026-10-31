@@ -799,4 +799,85 @@ public class MicCheck {
                         (Integer) call(g, "opponent", new Class<?>[]{}), (Float) get(g, "latencyMs")));
         System.out.println("REPORT5\n" + String.join("\n", report));
     }
+
+    /** Adds a 6-10 kHz chirp starting at an exact (sub-sample) time, like a real sound arriving. */
+    static void chirpAt(float[] x, double atS, float amp) {
+        int from = (int) Math.floor(atS * RATE);
+        for (int i = Math.max(0, from); i < x.length && i < from + RATE / 50 + 2; i++) {
+            double t = (double) i / RATE - atS;
+            if (t < 0 || t >= 0.02) continue;
+            double ph = 2 * Math.PI * (6000 * t + 4000 * t * t / (2 * 0.02));
+            double win = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 0.02);
+            x[i] += (float) (amp * win * Math.sin(ph));
+        }
+    }
+
+    static void setField(Object o, String name, Object v) throws Exception {
+        Field f = o.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(o, v);
+    }
+
+    @Test
+    public void temperatureExperiment() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        Random r = new Random(11);
+        mic(silence(1), true);
+        lesson(a, 50);
+        Object t = get(a, "temperature");
+        Class<?> roleCls = Class.forName("com.example.audiospectrumpro.TemperatureExperiment$Role");
+        final double tempC = 8, c = 331.3 + 0.606 * tempC, self = 0.10;
+
+        // Phone B: hears A, answers, and sends its own time between the two chirps.
+        call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "RESPONDER"));
+        run(300);
+        double d = 1.3, eA = 0.4, eB = eA + 0.47;
+        float[] sigB = mix(noise(4, 0.002f), silence(4));
+        chirpAt(sigB, eA + d / c, 0.25f);
+        chirpAt(sigB, eA + d / c + 0.004, 0.1f);        // reflection
+        chirpAt(sigB, eB + self / c, 0.7f);
+        mic(sigB, false);
+        run(2500);
+        long expected = Math.round((eB + self / c - eA - d / c) * 1e6);
+        String sent = (String) call(t, "sent", new Class<?>[]{});
+        long got = sent.startsWith("B:") ? Long.parseLong(sent.substring(2)) : -1;
+        shot(a, "99_temperature_B");
+        check("Термометр: телефон B відповідає", Math.abs(got - expected) <= 15,
+                String.format("надіслав %s, очікувалось B:%d (похибка %d мкс), пропущено кадрами %d семплів", sent, expected, got - expected, (Long) call(t, "lostSamples", new Class<?>[]{})));
+        run(3000);
+
+        // Phone A: measurements at three distances; B's time arrives through the modem.
+        call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "LEADER"));
+        double[] dist = {0.5, 0.5, 1.5, 3.0};
+        for (double dd : dist) {
+            setField(t, "distance", (float) dd);
+            mic(silence(1), true);
+            run(300);
+            call(t, "measure", new Class<?>[]{});
+            double ea = 0.3, eb = ea + 0.43 + r.nextDouble() * 0.05;
+            double tOwn = ea + self / c, tOther = eb + dd / c;
+            long deltaB = Math.round((eb + self / c - (ea + dd / c)) * 1e6);
+            float[] msg = (float[]) staticCall("ModemLesson", "encode", new Class<?>[]{String.class, int.class}, "B:" + deltaB, RATE);
+            for (int i = 0; i < msg.length; i++) msg[i] *= 0.4f;
+            float[] sig = mix(noise(7, 0.008f), concat(silence(tOther + 0.6), msg, silence(1)));
+            chirpAt(sig, tOwn, 0.8f);
+            chirpAt(sig, tOwn + 0.003, 0.3f);
+            chirpAt(sig, tOther, (float) (0.3 / dd));
+            chirpAt(sig, tOther + 0.005, (float) (dd > 2 ? 0.2 : 0.12 / dd));
+            mic(sig, false);
+            long until = System.currentTimeMillis() + 20000;
+            while (System.currentTimeMillis() < until && !"IDLE".equals(call(t, "state", new Class<?>[]{}))) run(200);
+        }
+        int n = (Integer) call(t, "count", new Class<?>[]{});
+        double speed = (Double) call(t, "speed", new Class<?>[]{});
+        double temp = (speed - 331.3) / 0.606;
+        shot(a, "99_temperature_A");
+        check("Термометр: швидкість звуку і температура", n == dist.length && Math.abs(temp - tempC) < 1.0,
+                String.format("вимірів %d, c = %.2f м/с (правда %.2f), T = %.2f °C (правда %.1f)", n, speed, c, temp, tempC));
+        System.out.println("REPORT6\n" + String.join("\n", report));
+    }
 }

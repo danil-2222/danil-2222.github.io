@@ -984,7 +984,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     // ---------------------------------------------------------------- Sound Academy navigation
 
     private static final String[] CATEGORIES = {"Просто про звук", "Основи звуку", "Музика і голос", "Фізика й техніка",
-            "Слух і сприйняття", "Передача й творчість", "Ігри"};
+            "Слух і сприйняття", "Передача й творчість", "Ігри", "Експерименти"};
     private static final String[] CATEGORY_DESC = {
             "Без графіків і цифр: ниточки, звірі, обличчя, пейзаж, колір",
             "Тон, гармоніки, струна, ряд Фур'є, шум, звук у повітрі",
@@ -992,7 +992,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             "Луна, дискретизація, стоячі хвилі, швидкість звуку, Хладні, інтерференція",
             "Равлик вуха, що чує вухо, межа слуху",
             "Малюнок у звук, звуковий модем, азбука Морзе",
-            "Папуга, тренажер слуху і тренажер ритму"};
+            "Папуга, тренажер слуху і тренажер ритму",
+            "Справжні виміри: температура повітря двома телефонами"};
     /** {category, lesson id, title, one-line description} */
     private static final Object[][] LESSONS = {
             {0, 32, "Завіса з ниточок", "Свисніть — розгойдається «ваша» ниточка"},
@@ -1034,6 +1035,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
             {6, 49, "Ритм-дуель (1–2 телефони)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
+            {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -1953,6 +1955,52 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Наприкінці телефони звуком обмінюються рахунками — і кожен покаже, хто переміг.";
     }
 
+    private TemperatureExperiment temperature;
+
+    private String lessonTemperature() {
+        ensureLive(0);
+        stopBuffer();
+        if (temperature == null) {
+            temperature = new TemperatureExperiment(density(), new TemperatureExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final TemperatureExperiment t = temperature;
+        viz2d.showLesson(t);
+        dynSpinner("Роль цього телефона", new String[]{"A — ведучий (вимірює)", "B — відповідач"}, t.role.ordinal(),
+                new OnPick() {
+                    @Override public void pick(int i) { t.setRole(TemperatureExperiment.Role.values()[i]); viz2d.invalidate(); }
+                });
+        dynSlider("Відстань між телефонами (на A): %.2f м", "temp_dist", 96, 16, new Value() {
+            @Override public float of(int p) { return 0.2f + 0.05f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { t.distance = 0.2f + 0.05f * p; }
+        });
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "📏 Виміряти", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.measure(); viz2d.invalidate(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "Почати заново", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.clearResults(); viz2d.invalidate(); }
+        });
+        return "Звук у теплому повітрі біжить швидше: c ≈ 331,3 + 0,606·T м/с (T у °C). При 0 °C — 331 м/с, при 25 °C — 346 м/с. "
+                + "Отже, якщо точно виміряти швидкість звуку, можна дізнатися температуру.\n\n"
+                + "Проблема: годинники двох телефонів не синхронізовані. Рішення — «луна у дві сторони»: A пікає, B чує і пікає у "
+                + "відповідь. Кожен телефон своїм мікрофоном міряє час між двома піками, які почув, — ΔA і ΔB. B передає своє ΔB "
+                + "звуком (модемом). Різниця ΔA − ΔB = 2·d / c плюс сталий доданок — усі затримки динаміків, мікрофонів і реакції "
+                + "скорочуються!\n\n"
+                + "Як робити:\n"
+                + "1. На другому телефоні оберіть «B — відповідач». На своєму — «A — ведучий».\n"
+                + "2. Покладіть телефони низом (мікрофонами й динаміками) один до одного на відстані 0,5 м. Виставте її повзунком "
+                + "і натисніть «Виміряти» 2–3 рази.\n"
+                + "3. Відсуньте ОДИН телефон по рулетці ще на 2–3 м (не повертаючи) і повторіть. Застосунок знайде швидкість за "
+                + "нахилом — сталі похибки зникнуть.\n\n"
+                + "Точність: 1 см помилки на 3 м — це 0,3 % швидкості, тобто ±1 м/с ≈ ±2 °C, тож міряйте рулеткою й тримайте телефони "
+                + "нерухомо. Гучність — на максимум, навколо тиша. Вологість теж трохи прискорює звук (до +0,5 м/с), тому у "
+                + "вологому повітрі результат буде на 1 °C вищим.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2275,6 +2323,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: text = lessonSimple(n); break;
             case 40: text = lessonParrot(); break;
             case 49: text = lessonDuel(); break;
+            case 50: text = lessonTemperature(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
