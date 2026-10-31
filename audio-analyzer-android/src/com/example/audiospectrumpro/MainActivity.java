@@ -1039,6 +1039,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
             {7, 65, "Ефект Доплера (2 телефони)", "Сирена на шнурку: з висоти тону — швидкість"},
+            {7, 66, "Швидкість звуку з трубки", "Подуйте над трубкою — її нота розкаже про повітря"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2530,6 +2531,42 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Наприклад, 1 м/с (крок) змінює тон лише на ~12 Гц, а 6 м/с (шнурок) — на ~70 Гц.";
     }
 
+    private TubeExperiment tube;
+
+    private String lessonTube() {
+        ensureLive(0);
+        stopBuffer();
+        if (tube == null) tube = new TubeExperiment(density());
+        final TubeExperiment t = tube;
+        viz2d.showLesson(t);
+        dynSpinner("Трубка", new String[]{"Закрита знизу (пляшка, пробірка)", "Відкрита з обох боків (труба, рулон)"}, t.open ? 1 : 0,
+                new OnPick() {
+                    @Override public void pick(int i) { t.open = i == 1; viz2d.invalidate(); }
+                });
+        dynSlider("Довжина повітряного стовпа: %.1f см", "tube_len", 190, 50, new Value() {
+            @Override public float of(int p) { return 5 + 0.5f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { t.lengthM = (5 + 0.5f * p) / 100f; }
+        });
+        dynSlider("Внутрішній діаметр: %.1f см", "tube_dia", 75, 20, new Value() {
+            @Override public float of(int p) { return 0.5f + 0.1f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { t.diameterM = (0.5f + 0.1f * p) / 100f; }
+        });
+        Button go = dynButton(dyn, "🎤 Слухати 3 с", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.listen(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Повітря в трубці звучить, як струна: у трубці, закритій знизу (пляшка, пробірка, склянка з водою), "
+                + "вміщається чверть хвилі, у відкритій з обох боків (труба від рушників, шматок шланга) — половина. "
+                + "Знаючи довжину і почувши ноту, дізнаємось довжину хвилі, а отже й швидкість звуку: c = f·λ.\n\n"
+                + "Як робити: виміряйте лінійкою довжину повітряного стовпа (у пляшці з водою — від води до верху) і "
+                + "внутрішній діаметр. Натисніть «Слухати» і 3 секунди дуйте над краєм під кутом, щоб загуло, або "
+                + "стукніть долонею по отвору. Телефон знайде тон і порахує швидкість звуку й температуру.\n\n"
+                + "Діаметр потрібен, бо звук «виходить» трохи за край трубки — це поправка на кінець (0,3 діаметра). "
+                + "Найточніше виходить з довгими вузькими трубками.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2868,6 +2905,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 63: text = lessonRelay(); break;
             case 64: text = lessonEchoSpeed(); break;
             case 65: text = lessonDoppler(); break;
+            case 66: text = lessonTube(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

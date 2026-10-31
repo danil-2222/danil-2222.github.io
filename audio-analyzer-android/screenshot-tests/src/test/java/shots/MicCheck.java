@@ -1904,4 +1904,58 @@ public class MicCheck {
         check("Ефект Доплера: швидкість з висоти тону", ok, sb.toString());
         System.out.println("REPORT21\n" + String.join("\n", report));
     }
+
+    /** Breath noise through a tube's resonances (harmonic numbers given), like blowing across it. */
+    static float[] tubeSound(double f, int[] harmonics, double sec) {
+        float[] w = noise(sec, 0.3f);
+        float[] out = new float[w.length];
+        for (int hn : harmonics) {
+            double fr = f * hn, q = 40, wr = 2 * Math.PI * fr / RATE, rr = Math.exp(-wr / (2 * q));
+            double a1 = -2 * rr * Math.cos(wr), a2 = rr * rr, y1 = 0, y2 = 0, g = 1.0 / hn;
+            for (int i = 0; i < w.length; i++) {
+                double y = (1 - rr) * w[i] - a1 * y1 - a2 * y2;
+                y2 = y1; y1 = y;
+                out[i] += (float) (g * y);
+            }
+        }
+        return withRms(mix(out, noise(sec, 0.002f)), 0.05);
+    }
+
+    @Test
+    public void tubeResonance() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 66);
+        Object t = get(a, "tube");
+        double c = 331.3 + 0.606 * 22;
+        Object[][] cases = {{false, 0.30f, 0.025f, new int[]{1, 3, 5}}, {true, 0.50f, 0.03f, new int[]{1, 2, 3}}};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (Object[] cs : cases) {
+            boolean open = (Boolean) cs[0];
+            float L = (Float) cs[1], d = (Float) cs[2];
+            setField(t, "open", open);
+            setField(t, "lengthM", L);
+            setField(t, "diameterM", d);
+            double f = c / ((open ? 2 : 4) * (L + (open ? 0.6 : 0.3) * d));
+            mic(silence(1), true);
+            run(200);
+            call(t, "listen", new Class<?>[]{});
+            mic(concat(tubeSound(f, (int[]) cs[3], 3.5), silence(1)), false);
+            run(3800);
+            if (!open) shot(a, "99_tube");
+            float sp = (Float) call(t, "speed", new Class<?>[]{});
+            float fr = (Float) call(t, "frequency", new Class<?>[]{});
+            boolean good = Math.abs(sp - c) / c < 0.015;
+            ok &= good;
+            sb.append(String.format("%s L=%.0f см: тон %.1f Гц (правда %.1f), c = %.1f м/с (правда %.1f) %s; ", open ? "відкрита" : "закрита",
+                    L * 100, fr, f, sp, c, good ? "✓" : "✗"));
+        }
+        check("Швидкість звуку з трубки", ok, sb.toString());
+        System.out.println("REPORT22\n" + String.join("\n", report));
+    }
 }
