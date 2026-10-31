@@ -935,6 +935,8 @@ public class MicCheck {
 
     static float windAttempt(MainActivity a, Object g, float[] afterCountdown, int contest) throws Exception {
         int p = (Integer) call(g, "player", new Class<?>[]{});
+        mic(silence(1), true);
+        run(400);                                         // let queued frames of the previous scene through
         call(g, "start", new Class<?>[]{});
         mic(concat(silence(3.0), afterCountdown, silence(8)), false);
         long until = System.currentTimeMillis() + 40000;
@@ -1252,6 +1254,8 @@ public class MicCheck {
             }
             b += n[1];
         }
+        mic(silence(1), true);
+        run(400);
         call(g, "start", new Class<?>[]{});
         mic(x, false);
         run((long) ((offset + 4 * beat) * 1000));
@@ -1892,6 +1896,8 @@ public class MicCheck {
         double[] truth = {swing, 1.4};
         String[] names = {"шнурок", "крок повз"};
         for (int m = 0; m < 2; m++) {
+            mic(silence(1), true);
+            run(400);
             call(d, "start", new Class<?>[]{});
             mic(mix(doppler(6, moves[m], 0.05f), voice(180, 6, 0.02f)), false);
             run(6000);
