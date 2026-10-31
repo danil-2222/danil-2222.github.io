@@ -857,10 +857,10 @@ public class MicCheck {
         float[] n = noise(40, 0.004f);
         for (int i = 0; i < x.length; i++) x[i] = n[i];
         double lat = 0.12;
-        toneAt(x, 3.0 + lat, 0.4, 1000, 0.6f);                         // own hello
-        double reply = 3.0 + lat + 0.12 + 0.45;                           // B heard it after 120 ms and answered
+        toneAt(x, 2.0 + lat, 0.4, 1000, 0.6f);                         // own hello after the 2 s count-down
+        double reply = 2.0 + lat + 0.12 + 0.45;                           // B heard it after 120 ms and answered
         toneAt(x, reply, 0.4, 1400, (float) (0.25 / d));
-        double next = reply + 0.12 + 0.9 + lat;                           // A chirps 0.9 s after hearing the answer
+        double next = reply + 0.12 + 0.5 + lat;                           // A chirps 0.5 s after hearing the answer
         for (int k = 0; k < 3; k++) {
             double ea = next, eb = ea + 0.5 + r.nextDouble() * 0.05;
             chirpAt(x, ea + selfA / c, 0.8f);
@@ -871,7 +871,7 @@ public class MicCheck {
             float[] msg = modem("B:" + deltaB, (float) (0.4 / Math.max(1, d)));
             int at = (int) ((eb + 0.75) * RATE);
             for (int i = 0; i < msg.length; i++) x[at + i] += msg[i];
-            next = eb + 0.75 + msg.length / (double) RATE + 0.1 + 1.2 + lat;
+            next = eb + 0.75 + msg.length / (double) RATE + 0.1 + 0.6 + lat;
         }
         return java.util.Arrays.copyOf(x, (int) ((next + 2) * RATE));
     }
@@ -953,6 +953,9 @@ public class MicCheck {
         call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "LEADER"));
         call(t, "clearResults", new Class<?>[]{});
         double[] dist = {0.5, 1.5, 3.0};
+        StringBuilder est = new StringBuilder();
+        boolean estOk = true;
+        long t0 = System.currentTimeMillis();
         for (double dd : dist) {
             setField(t, "distance", (float) dd);
             mic(silence(1), true);
@@ -960,7 +963,11 @@ public class MicCheck {
             call(t, "start", new Class<?>[]{});
             mic(aRun(dd, c, 0.13, 0.11, r), false);
             waitIdle(t, 60000);
+            double e = (Double) call(t, "estimate", new Class<?>[]{});
+            estOk &= Math.abs(e - dd) < 0.03 * dd + 0.03;
+            est.append(String.format("%.2f→%.2f ", dd, e));
         }
+        check("Термометр: відстань «на слух» (за 20 °C)", estOk, "рулетка→звук, м: " + est + "(повітря 8 °C, тож звук завищує на ~2 % — як і має бути)");
         int n = (Integer) call(t, "count", new Class<?>[]{});
         double speed = (Double) call(t, "speed", new Class<?>[]{});
         double temp = (speed - 331.3) / 0.606;
@@ -973,7 +980,7 @@ public class MicCheck {
         run(400);
         call(t, "start", new Class<?>[]{});
         float[] lonely = noise(9, 0.004f);
-        toneAt(lonely, 3.1, 0.4, 1000, 0.6f);
+        toneAt(lonely, 2.1, 0.4, 1000, 0.6f);
         mic(lonely, false);
         waitIdle(t, 20000);
         String st = (String) get(t, "status");

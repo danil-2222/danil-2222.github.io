@@ -32,7 +32,11 @@ final class TemperatureExperiment implements LessonView {
     static final int REPEATS = 3;
     /** Assumed speaker-to-microphone distance inside one phone (only used with a single distance). */
     static final float SELF_M = 0.12f;
-    static final float REPLY_MS = 400;
+    static final float REPLY_MS = 300;
+    /** Pauses of the measuring cycle (ms): count-down, after the handshake, between the three repeats. */
+    static final float COUNT_MS = 2000, AFTER_HELLO_MS = 500, BETWEEN_MS = 600;
+    /** Temperature assumed for the rough distance estimate. */
+    static final float GUESS_C = 20;
 
     static final class Measurement {
         final float distance;
@@ -153,8 +157,8 @@ final class TemperatureExperiment implements LessonView {
         repeatsLeft = REPEATS;
         linkOk = false;
         state = State.A_COUNT;
-        deadline = clockMs + 3000;
-        status = "Через 3 с телефон A привітається…";
+        deadline = clockMs + COUNT_MS;
+        status = "Через 2 с телефон A привітається…";
     }
 
     /** Kept for compatibility: the same as start(). */
@@ -179,6 +183,17 @@ final class TemperatureExperiment implements LessonView {
     }
 
     double lastDistance() { return lastDistance; }
+
+    private double estimate = Double.NaN;
+
+    /**
+     * Rough distance assuming 20 °C (good to about ±3 %). Only a helper for setting the slider: a
+     * temperature computed from a distance that itself came from an assumed temperature would just
+     * return that assumption, so for the thermometer the distance must be measured with a tape.
+     */
+    static double estimateDistance(double d) { return (331.3 + 0.606 * GUESS_C) * d / 2 + SELF_M; }
+
+    double estimate() { return estimate; }
 
     /** Distance from the time difference D at the known temperature. */
     double rulerDistance(double d) {
@@ -312,7 +327,7 @@ final class TemperatureExperiment implements LessonView {
         } else if (state == State.A_HELLO) {
             linkOk = true;
             state = State.A_GAP;
-            deadline = clockMs + 900;
+            deadline = clockMs + AFTER_HELLO_MS;
             status = "✓ Телефон B на зв'язку! Починаю вимір…";
         }
     }
@@ -461,7 +476,7 @@ final class TemperatureExperiment implements LessonView {
                     repeatsLeft--;
                     if (repeatsLeft > 0) {
                         state = State.A_GAP;
-                        deadline = clockMs + 1200;
+                        deadline = clockMs + BETWEEN_MS;
                         status = String.format(Locale.US, "✓ Вимір %d: %.3f мс. Ще раз…", runD.size(), d * 1000);
                         break;
                     }
@@ -486,8 +501,8 @@ final class TemperatureExperiment implements LessonView {
                         Journal.add("Термометр зі звуку", "швидкість звуку", speed(), "м/с");
                         Journal.add("Термометр зі звуку", "температура повітря", temperature(speed()), "°C");
                     }
-                    status = String.format(Locale.US, "✓ %s: %d виміри, різниця часу %.3f мс",
-                            fmtM(distance), runD.size(), d * 1000);
+                    estimate = estimateDistance(d);
+                    status = String.format(Locale.US, "✓ %d виміри: %.3f мс · відстань ≈ %.2f м", runD.size(), d * 1000, estimate);
                 } else if (clockMs > deadline) {
                     fail("Не почув повідомлення від B. Тиша навколо допоможе.");
                 }
@@ -557,6 +572,10 @@ final class TemperatureExperiment implements LessonView {
         k.line(c, bx - 16 * dp, y + 6 * dp, ax + 16 * dp, y + 6 * dp, LessonKit.YELLOW, 2);
         k.label(c, "пік A →", (ax + bx) / 2, y - 12 * dp, 10, LessonKit.CYAN, Paint.Align.CENTER, false);
         k.label(c, "← пік B", (ax + bx) / 2, y + 22 * dp, 10, LessonKit.YELLOW, Paint.Align.CENTER, false);
+        if (!ruler && !Double.isNaN(estimate) && role == Role.LEADER) {
+            k.label(c, String.format(Locale.US, "звук каже ≈ %.2f м", estimate), (ax + bx) / 2, y + 56 * dp, 10, LessonKit.YELLOW,
+                    Paint.Align.CENTER, false);
+        }
         k.label(c, ruler ? (Double.isNaN(lastDistance) ? "d = ?" : String.format(Locale.US, "d = %.2f м", lastDistance)) : "d = " + fmtM(distance),
                 (ax + bx) / 2, y + 40 * dp, 12, LessonKit.WHITE, Paint.Align.CENTER, true);
 
