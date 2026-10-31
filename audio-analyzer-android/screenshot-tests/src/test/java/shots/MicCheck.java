@@ -1596,4 +1596,67 @@ public class MicCheck {
                 String.format("дотик до правильної відповіді зараховано: %s; рахунок Сови %d, Їжаки %d (очікувалось 4 і 3)", tapScore == 1, s0, s1));
         System.out.println("REPORT15\n" + String.join("\n", report));
     }
+
+    /** Beeps every 0.6 s whose loudness follows a walk towards (and then next to) the hidden phone. */
+    static float[] approach(double hz, double sec, double ampFrom, double ampTo, double reachAtS) {
+        float[] x = new float[(int) (sec * RATE)];
+        for (int b = 0; b * 0.6 < sec; b++) {
+            double t = b * 0.6, f = Math.min(1, t / reachAtS);
+            double amp = ampFrom * Math.pow(ampTo / ampFrom, f);
+            int at = (int) (t * RATE), len = (int) (0.15 * RATE);
+            for (int i = 0; i < len && at + i < x.length; i++) {
+                double env = Math.min(1, Math.min(i, len - i) / 240.0);
+                x[at + i] += (float) (amp * env * Math.sin(2 * Math.PI * hz * i / RATE));
+            }
+        }
+        return x;
+    }
+
+    @Test
+    public void hideAndSeek() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 60);
+        Object g = get(a, "hideSeek");
+        String[] mode = {"3 кГц", "15 кГц"};
+        double[] hz = {3000, 15000};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (int m = 0; m < 2; m++) {
+            setField(g, "hider", false);
+            setField(g, "quiet", m == 1);
+            mic(silence(1), true);
+            run(300);
+            call(g, "start", new Class<?>[]{});
+            float[] go = modem("GO", 0.3f);
+            // Walking from far away (very quiet) to right next to it in 12 s, people talking around.
+            float[] walk = mix(approach(hz[m], 18, 0.0003, 0.4, 12), voice(200, 18, 0.05f));
+            mic(concat(silence(0.5), go, walk), false);
+            run((long) (500 + go.length * 1000L / RATE + 6000));
+            int trendMid = (Integer) call(g, "trend", new Class<?>[]{});
+            float heatMid = (Float) call(g, "heat", new Class<?>[]{});
+            if (m == 0) shot(a, "99_hide_seeking");
+            waitState(g, "FOUND", 25000);
+            if (m == 0) shot(a, "99_hide_found");
+            float found = (Float) call(g, "foundSeconds", new Class<?>[]{});
+            boolean thisOk = "FOUND".equals(call(g, "state", new Class<?>[]{})) && trendMid == 1 && found > 8 && found < 13.5;
+            ok &= thisOk;
+            sb.append(String.format("%s: на півдорозі тепло %.2f і «тепліше» %s, знайдено за %.1f с (дійшли за 12 с) %s; ",
+                    mode[m], heatMid, trendMid == 1 ? "✓" : "✗", found, thisOk ? "✓" : "✗"));
+        }
+        // Only talking, no hidden phone: never "found".
+        setField(g, "quiet", false);
+        mic(silence(1), true);
+        run(300);
+        call(g, "startNow", new Class<?>[]{});
+        mic(concat(voice(300, 4, 0.3f), whistle(2500, 2, 0.2f), silence(1)), false);
+        run(7500);
+        boolean noFalse = !"FOUND".equals(call(g, "state", new Class<?>[]{}));
+        check("Хованки: старт за сигналом і «знайшли»", ok && noFalse, sb + "розмова і свист без маячка: " + (noFalse ? "не знайдено ✓" : "хибне «знайшли» ✗"));
+        System.out.println("REPORT16\n" + String.join("\n", report));
+    }
 }

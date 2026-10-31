@@ -1046,6 +1046,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 57, "Гаряча картопля (3+ гравців)", "Свисни, загуди чи подми — і швидше передай!"},
             {8, 58, "Заспівай ноту (1–8 гравців)", "Хто найточніше повторить ноти — у центах"},
             {8, 59, "Звуковий квіз (команди)", "Інструменти, частоти, акорди — хто краще чує?"},
+            {8, 60, "Звукові хованки (2+ телефони)", "Знайди телефон, що пищить, — хто швидше?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2310,6 +2311,43 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "від флейти.";
     }
 
+    private HideSeekGame hideSeek;
+
+    private String lessonHideSeek() {
+        ensureLive(0);
+        stopBuffer();
+        if (hideSeek == null) {
+            hideSeek = new HideSeekGame(density(), new HideSeekGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final HideSeekGame g = hideSeek;
+        viz2d.showLesson(g);
+        dynSpinner("Хто я", new String[]{"Шукач", "Ховаюсь (маячок)"}, g.hider ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { g.hider = i == 1; viz2d.invalidate(); }
+        });
+        dynSpinner("Писк", new String[]{"3 кГц — чутно", "15 кГц — ледь чутно (складніше)"}, g.quiet ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { g.quiet = i == 1; }
+        });
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "▶ Почати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); viz2d.invalidate(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "⏱ Старт без сигналу", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.startNow(); }
+        });
+        return "Один телефон ховають, решта — шукачі (кожен зі своїм телефоном, скільки завгодно людей).\n\n"
+                + "1. Шукачі обирають «Шукач» і тиснуть «▶ Почати» — телефони чекають сигналу.\n"
+                + "2. Той, хто ховає, обирає «Ховаюсь», тисне «▶ Почати» і ховає телефон. Телефон спершу «пропищить» "
+                + "сигнал старту (усі секундоміри запустяться разом), а потім пищатиме кожні 0,6 с.\n"
+                + "3. Ходіть і дивіться на термометр і стрілку «тепліше/холодніше». Коли ви впритул до схованки — "
+                + "телефон сам зупинить секундомір: «ЗНАЙШЛИ!». Хто має найменший час — переміг.\n\n"
+                + "Обидва телефони на тому самому писку (3 або 15 кГц). Шукачі чують лише свій писк — розмови не заважають. "
+                + "15 кГц дорослі чують погано, а діти — добре: цікаво перевірити!";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2642,6 +2680,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 57: text = lessonPotato(); break;
             case 58: text = lessonSingNote(); break;
             case 59: text = lessonQuiz(); break;
+            case 60: text = lessonHideSeek(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
