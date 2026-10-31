@@ -423,4 +423,75 @@ public class MicCheck {
 
         System.out.println("REPORT\n" + String.join("\n", report));
     }
+
+    /** Formant synthesis (source-filter model): a glottal pulse train at f0 through resonators at F1, F2, F3. */
+    static float[] vowel(double f0, double f1, double f2, double f3, double sec) {
+        int n = (int) (sec * RATE);
+        float[] x = new float[n];
+        double ph = 0;
+        // Glottal source: impulse train through two leaky integrators (about -12 dB per octave).
+        double g1 = 0, g2 = 0, mean = 0;
+        for (int i = 0; i < n; i++) {
+            ph += f0 / RATE;
+            double imp = 0;
+            if (ph >= 1) { ph -= 1; imp = 1; }
+            g1 = 0.985 * g1 + imp;
+            g2 = 0.985 * g2 + g1;
+            x[i] = (float) g2;
+            mean += g2;
+        }
+        mean /= n;
+        for (int i = 0; i < n; i++) x[i] -= mean;
+        for (double[] fb : new double[][]{{f1, 80}, {f2, 110}, {f3, 150}}) {
+            double r = Math.exp(-Math.PI * fb[1] / RATE), th = 2 * Math.PI * fb[0] / RATE;
+            double a1 = 2 * r * Math.cos(th), a2 = -r * r, y1 = 0, y2 = 0;
+            for (int i = 0; i < n; i++) {
+                double y = x[i] + a1 * y1 + a2 * y2;
+                y2 = y1;
+                y1 = y;
+                x[i] = (float) y;
+            }
+        }
+        float m = 1e-6f;
+        for (float v : x) m = Math.max(m, Math.abs(v));
+        for (int i = 0; i < n; i++) x[i] *= 0.3f / m;
+        return x;
+    }
+
+    @Test
+    public void vowelsAndRange() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+
+        lesson(a, 30);
+        Object vl = get(a, "vowelLesson");
+        String[][] cases = {{"а", "720", "1250", "2500"}, {"і", "290", "2250", "3000"}, {"у", "330", "760", "2400"},
+                {"о", "500", "900", "2450"}, {"е", "490", "1800", "2550"}};
+        for (String[] cs : cases) {
+            mic(vowel(125, Double.parseDouble(cs[1]), Double.parseDouble(cs[2]), Double.parseDouble(cs[3]), 3), true);
+            run(1800);
+            String got = (String) call(vl, "currentVowel", new Class<?>[]{});
+            check("Карта голосних «" + cs[0] + "»", cs[0].equals(got),
+                    String.format("розпізнано «%s», F1 %.0f F2 %.0f", got, (Float) get(vl, "f1"), (Float) get(vl, "f2")));
+            shot(a, "92_vowel_" + cs[1]);
+        }
+        back(a);
+
+        lesson(a, 31);
+        Object rl = get(a, "rangeLesson");
+        int[] notes = {45, 48, 52, 55, 57, 60, 62, 64, 67};
+        float[] song = new float[0];
+        for (int m : notes) song = concat(song, voice(440 * Math.pow(2, (m - 69) / 12.0), 0.7, 0.25f));
+        mic(song, false);
+        run(8000);
+        shot(a, "93_range");
+        int lo = (Integer) call(rl, "lowest", new Class<?>[]{}), hi = (Integer) call(rl, "highest", new Class<?>[]{});
+        int type = (Integer) call(rl, "voiceType", new Class<?>[]{});
+        check("Голосовий діапазон", lo == 45 && hi == 67 && type == 1,
+                "MIDI " + lo + "–" + hi + ", тип " + (type >= 0 ? new String[]{"бас", "баритон", "тенор", "альт", "меццо", "сопрано"}[type] : "—"));
+        System.out.println("REPORT2\n" + String.join("\n", report));
+    }
 }

@@ -50,7 +50,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     };
     private static final int WAVE_BUFFER = 10;
     /** Mode spinner position -> index into MODES_2D: analyzer modes, then live learning views. */
-    private static final int[] SPINNER_MODES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, -1, -2, -3, -4, -5};
+    private static final int[] SPINNER_MODES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, -1, -2, -3, -4, -5, -6, -7};
     private static final int MODE_PITCH = 8, MODE_CHROMA = 9, MODE_INTERVALS = 10, MODE_AIR = 11, MODE_ECHO = 12,
             MODE_SAMPLING = 13, WAVE_INTERVAL = 9;
     private static final String[] INTERVAL_NAMES = {"Унісон", "Мала секунда", "Велика секунда", "Мала терція",
@@ -306,7 +306,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 "3D водоспад (OpenGL)", "Осцилограф", "Тюнер",
                 "🎓 Фур'є: кола", "🎓 Мелодія голосу", "🎓 Нотне коло (ноти й акорди)",
                 "🎓 Звук у повітрі", "🎓 Луна кімнати (RT60)", "🎓 Равлик вуха", "🎓 Струна, що співає",
-                "🎓 Огинаюча звуку (ADSR)", "🎓 Фігури Хладні", "🎓 Що чує вухо (рівна гучність)"
+                "🎓 Огинаюча звуку (ADSR)", "🎓 Фігури Хладні", "🎓 Що чує вухо (рівна гучність)",
+                "🎓 Карта голосних", "🎓 Голосовий діапазон"
         }, new OnPick() {
             @Override public void pick(int i) { applyMode(i); }
         });
@@ -1002,6 +1003,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {0, 10, "Звук у повітрі", "Молекули, тиск і довжина хвилі"},
             {1, 7, "Мелодія голосу", "Висота голосу в часі на нотних лініях"},
             {1, 8, "Нотне коло", "Які ноти звучать і який це акорд"},
+            {1, 30, "Карта голосних", "Форманти: чому «а» і «і» звучать по-різному"},
+            {1, 31, "Голосовий діапазон", "Від найнижчої до найвищої ноти — і тип голосу"},
             {1, 9, "Інтервали", "Чому одні поєднання звучать гарно"},
             {1, 25, "Огинаюча звуку (ADSR)", "Чому піаніно і скрипка на одній ноті звучать по-різному"},
             {1, 28, "Еквалайзер своїми руками", "Бас, середина, високі — і що вони роблять зі звуком"},
@@ -1703,8 +1706,66 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case -2: return string();
             case -3: return envelope();
             case -4: chladni().live = true; return chladni();
+            case -6: return vowels();
+            case -7: return range();
             default: return loudness();
         }
+    }
+
+    private VowelLesson vowelLesson;
+    private VoiceRangeLesson rangeLesson;
+
+    private VowelLesson vowels() {
+        if (vowelLesson == null) {
+            vowelLesson = new VowelLesson(density());
+            vowelLesson.voice = prefs.getInt("vowelVoice", 0);
+        }
+        return vowelLesson;
+    }
+
+    private VoiceRangeLesson range() { if (rangeLesson == null) rangeLesson = new VoiceRangeLesson(density()); return rangeLesson; }
+
+    private String lessonVowels() {
+        ensureLive(0);
+        stopBuffer();
+        final VowelLesson v = vowels();
+        viz2d.showLesson(v);
+        dynSpinner("Чий голос", VowelLesson.VOICES, v.voice, new OnPick() {
+            @Override public void pick(int i) {
+                v.voice = i;
+                prefs.edit().putInt("vowelVoice", i).apply();
+                viz2d.invalidate();
+            }
+        });
+        return "Протягніть по черзі «і-і-і», «е-е-е», «а-а-а», «о-о-о», «у-у-у» на одній ноті. Точка на карті "
+                + "переміщатиметься, хоча висота голосу не змінюється!\n\n"
+                + "Рот і горло — це трубка-резонатор. Положення язика й губ змінює її резонанси — форманти. "
+                + "Перша (F1) росте, коли рот відкривається ширше (і → а). Друга (F2) росте, коли язик іде вперед "
+                + "(у → і). Саме за F1 і F2 мозок упізнає голосну — і за ними ж розмовляють співаки, щоб звучати «округло».\n\n"
+                + "Оберіть свій тип голосу: у жінок і дітей форманти вищі, бо трубка коротша.";
+    }
+
+    private String lessonRange() {
+        ensureLive(0);
+        stopBuffer();
+        final VoiceRangeLesson r = range();
+        viz2d.showLesson(r);
+        LinearLayout row = dynRow();
+        dynButton(row, "Почати заново", new View.OnClickListener() {
+            @Override public void onClick(View v) { r.reset(); viz2d.invalidate(); }
+        });
+        dynButton(row, "♪ Дати ноту до", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                float[] pcm = new float[48000 * 2];
+                LessonKit.addNote(pcm, 0, pcm.length, LessonKit.midiToHz(48), 0.9f, 48000);
+                playBuffer(pcm, false);
+            }
+        });
+        return "Заспівайте найнижчу ноту, яку можете впевнено втримати, і плавно піднімайтесь (на «а» або «у») "
+                + "до найвищої. Кожна нота, яку ви втримаєте хоча б 0,3 с, засвітиться на клавіатурі.\n\n"
+                + "За діапазоном застосунок підкаже, до якого типу голосу він найближчий: бас, баритон, тенор, "
+                + "альт, меццо-сопрано чи сопрано. Це лише орієнтир — справжній тип визначає ще й тембр, і де "
+                + "голосу зручно. Не напружуйтесь на крайніх нотах!";
     }
 
     private String lessonCochlea() {
@@ -1952,6 +2013,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 27: text = lessonInterference(); break;
             case 28: text = lessonEqualizer(); break;
             case 29: text = lessonLoudness(); break;
+            case 30: text = lessonVowels(); break;
+            case 31: text = lessonRange(); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
                 select(R.id.spinSource, 0);
