@@ -106,4 +106,31 @@
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">28dp</item>
     </style>
+    <style name="LessonTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">#00F0FF</item>
+    </style>
+    <style name="BackBtn">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:backgroundTint">#14213A</item>
+        <item name="android:textColor">#00F0FF</item>
+    </style>
+    <style name="CardBtn">
+        <item name="android:gravity">start|center_vertical</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:backgroundTint">#16233A</item>
+        <item name="android:textColor">#E2E8F0</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+    </style>
 </resources>

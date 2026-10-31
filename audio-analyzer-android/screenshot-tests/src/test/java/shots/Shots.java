@@ -258,7 +258,7 @@ public class Shots {
     public void learning() throws Exception {
         MainActivity a = setup();
         click(a, "tabLearn");
-        click(a, "btnExp3");
+        lesson(a, 3);
         run(2500);
         shot(a, "15_fourier_saw");
 
@@ -266,7 +266,7 @@ public class Shots {
         run(2000);
         shot(a, "16_fourier_square");
 
-        click(a, "btnExp4");
+        lesson(a, 4);
         run(2000);
         shot(a, "17_hints_square");
 
@@ -323,7 +323,7 @@ public class Shots {
         Object engine = getField(a, "engine");
         click(a, "tabLearn");
 
-        click(a, "btnExp7");
+        lesson(a, 7);
         select(a, "spinSource", 1);
         float[] melody = {261.63f, 293.66f, 329.63f, 349.23f, 392f, 392f, 440f, 392f};
         for (float f : melody) { gen("SINE", f, 0.4f); run(600); }
@@ -331,7 +331,7 @@ public class Shots {
         run(700);
         shot(a, "21_pitch");
 
-        click(a, "btnExp9");
+        lesson(a, 9);
         run(1200);
         shot(a, "22_intervals_fifth");
         select(a, "spinInterval", 1);
@@ -342,13 +342,13 @@ public class Shots {
         run(800);
         shot(a, "24_intervals_beats");
 
-        click(a, "btnExp10");
+        lesson(a, 10);
         select(a, "spinSource", 1);
         click(a, "btnPresetSaw");
         run(2000);
         shot(a, "25_air");
 
-        click(a, "btnExp12");
+        lesson(a, 12);
         run(300);
         shot(a, "26_sampling_ok");
         progress(a, "seekSampleSig", 860); // ~7.9 kHz at fs = 8 kHz
@@ -356,7 +356,7 @@ public class Shots {
         shot(a, "27_sampling_alias");
 
         File wav = makeWav();
-        click(a, "btnExp8");
+        lesson(a, 8);
         call(a, "loadFile", new Class<?>[]{android.net.Uri.class}, android.net.Uri.fromFile(wav));
         run(1500);
         call(engine, "seek", new Class<?>[]{int.class}, (int) (44100 * 4.3));
@@ -368,7 +368,7 @@ public class Shots {
         click(a, "btnTapeClose");
 
         File clap = makeClapWav();
-        click(a, "btnExp11");
+        lesson(a, 11);
         call(a, "loadFile", new Class<?>[]{android.net.Uri.class}, android.net.Uri.fromFile(clap));
         run(1500);
         call(engine, "setPlaying", new Class<?>[]{boolean.class}, true);
@@ -432,5 +432,132 @@ public class Shots {
         }
         run(200);
         shot(a, "31_sonar_motion");
+    }
+
+    static void lesson(MainActivity a, int id) throws Exception {
+        click(a, "tabLearn");
+        call(a, "openLesson", new Class<?>[]{int.class, String.class}, id, "Урок " + id);
+        shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    static android.view.View findText(android.view.View v, String text) {
+        if (v instanceof android.widget.TextView && text.equals(((android.widget.TextView) v).getText().toString())) return v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.view.View r = findText(g.getChildAt(i), text);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    static void clickText(MainActivity a, String text) {
+        android.view.View v = findText(a.getWindow().getDecorView(), text);
+        if (v == null) throw new AssertionError("no view with text " + text);
+        v.performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+    }
+
+    static void buffer(float[] pcm, boolean loop) throws Exception {
+        Class<?> g = Class.forName("com.example.audiospectrumpro.SignalGenerator");
+        Class<?> w = Class.forName("com.example.audiospectrumpro.SignalGenerator$Waveform");
+        set(g, "buffer", pcm);
+        set(g, "bufferLoop", loop);
+        Field v = g.getDeclaredField("bufferVersion");
+        v.setAccessible(true);
+        v.set(null, (Integer) v.get(null) + 1);
+        set(g, "waveform", Enum.valueOf((Class) w, "BUFFER"));
+        set(g, "level", 0.5f);
+    }
+
+    static float[] burst(float[] dst, int at, int len, float amp, java.util.Random r, int rate, float decayMs) {
+        for (int i = 0; i < len && at + i < dst.length; i++) {
+            dst[at + i] += (float) ((r.nextDouble() * 2 - 1) * amp * Math.exp(-i * 1000.0 / rate / decayMs));
+        }
+        return dst;
+    }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void academy() throws Exception {
+        MainActivity a = setup();
+        click(a, "tabLearn");
+        run(300);
+        shot(a, "32_academy_home");
+        clickText(a, "Передача й творчість\nМалюнок у звук, звуковий модем, азбука Морзе");
+        run(200);
+        shot(a, "33_academy_list");
+
+        lesson(a, 13);
+        run(300);
+        shot(a, "34_draw_editor");
+        clickText(a, "▶ Програти і показати на спектрограмі");
+        run(7000);
+        shot(a, "35_draw_spectrogram");
+
+        lesson(a, 14);
+        select(a, "spinSource", 1);
+        clickText(a, "📤 Надіслати звуком");
+        run(9000);
+        shot(a, "36_modem");
+
+        lesson(a, 19);
+        select(a, "spinSource", 1);
+        clickText(a, "📤 Надіслати Морзе");
+        run(5000);
+        shot(a, "37_morse");
+
+        lesson(a, 15);
+        select(a, "spinSource", 1);
+        gen("SINE", 230, 0.4f);
+        run(1500);
+        shot(a, "38_bottle");
+
+        lesson(a, 17);
+        select(a, "spinSource", 1);
+        gen("SINE", 76, 0.4f);
+        run(2500);
+        shot(a, "39_room");
+
+        lesson(a, 18);
+        select(a, "spinSource", 1);
+        int rate = 48000;
+        float[] clap = new float[rate * 2];
+        java.util.Random r = new java.util.Random(9);
+        burst(clap, rate / 2, rate / 10, 0.9f, r, rate, 4);
+        burst(clap, rate / 2 + Math.round(2 * 10 / 343f * rate), rate / 10, 0.2f, r, rate, 4);
+        buffer(clap, false);
+        run(2000);
+        shot(a, "40_speed");
+
+        lesson(a, 20);
+        clickText(a, "▶ Нове завдання");
+        run(300);
+        clickText(a, "Перша вища");
+        run(300);
+        shot(a, "41_ear");
+
+        lesson(a, 21);
+        select(a, "spinSource", 1);
+        Class<?> rl = Class.forName("com.example.audiospectrumpro.RhythmLesson");
+        java.lang.reflect.Method m = rl.getDeclaredMethod("metronome", int.class, int.class);
+        m.setAccessible(true);
+        float[] bar = (float[]) m.invoke(null, 90, rate);
+        int beat = Math.round(60f / 90 * rate);
+        for (int b = 0; b < 4; b++) burst(bar, b * beat + Math.round(0.03f * rate), rate / 20, 0.7f, r, rate, 8);
+        buffer(bar, true);
+        run(6000);
+        shot(a, "42_rhythm");
+
+        lesson(a, 16);
+        select(a, "spinSource", 1);
+        click(a, "btnPresetVoice");
+        gen("HARMONICS", 160, 0.5f);
+        run(2500);
+        gen("SINE", 160, 0.0f);
+        run(500);
+        clickText(a, "Гелій");
+        run(2500);
+        shot(a, "43_voicefx");
     }
 }

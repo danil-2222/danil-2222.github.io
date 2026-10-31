@@ -9,6 +9,8 @@ import android.content.res.Configuration;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.AdapterView;
@@ -16,6 +18,7 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
@@ -45,6 +48,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             VisualizerView.Mode.FOURIER, VisualizerView.Mode.PITCH, VisualizerView.Mode.CHROMA,
             VisualizerView.Mode.INTERVALS, VisualizerView.Mode.AIR, VisualizerView.Mode.ECHO, VisualizerView.Mode.SAMPLING
     };
+    private static final int WAVE_BUFFER = 10;
     private static final int MODE_PITCH = 8, MODE_CHROMA = 9, MODE_INTERVALS = 10, MODE_AIR = 11, MODE_ECHO = 12,
             MODE_SAMPLING = 13, WAVE_INTERVAL = 9;
     private static final String[] INTERVAL_NAMES = {"Унісон", "Мала секунда", "Велика секунда", "Мала терція",
@@ -297,11 +301,18 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         refreshFftLabels(RATES[Math.max(0, Math.min(RATES.length - 1, prefs.getInt("rate", 0)))]);
         spinner(R.id.spinMode, "mode", 0, new String[]{
                 "Спектр (лінія)", "Спектр (стовпчики)", "1/3 октави (RTA)", "Спектрограма (водоспад)",
-                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер", "Фур'є: кола (навчання)",
-                "Мелодія голосу (навчання)", "Нотне коло (навчання)", "Інтервали (навчання)",
-                "Звук у повітрі (навчання)", "Луна кімнати (навчання)", "Дискретизація (навчання)"
+                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер"
         }, new OnPick() {
-            @Override public void pick(int i) {
+            @Override public void pick(int i) { applyMode(i); }
+        });
+        spinner(R.id.spinSource, "source", 0, new String[]{"Мікрофон", "Внутрішній генератор (без мікрофона)"}, new OnPick() {
+            @Override public void pick(int i) { engine.setSourceType(AudioEngine.SourceType.values()[i]); }
+        });
+        setupOtherSpinners();
+    }
+
+    /** Shows analyzer mode i (index into the mode spinner). */
+    private void applyMode(int i) {
                 mode = i;
                 if (ready && sonar.isRunning()) sonar.stop();
                 if (ready) {
@@ -318,11 +329,30 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                     viz2d.setVisibility(View.VISIBLE);
                     viz2d.setMode(MODES_2D[i]);
                 }
-            }
-        });
-        spinner(R.id.spinSource, "source", 0, new String[]{"Мікрофон", "Внутрішній генератор (без мікрофона)"}, new OnPick() {
-            @Override public void pick(int i) { engine.setSourceType(AudioEngine.SourceType.values()[i]); }
-        });
+    }
+
+    /** Selects analyzer mode i in the spinner and applies it even if it was already selected. */
+    private void useMode(int i) {
+        Spinner sp = (Spinner) findViewById(R.id.spinMode);
+        if (sp.getSelectedItemPosition() != i) sp.setSelection(i);
+        applyMode(i);
+    }
+
+    /** Shows a learning visualisation without touching the analyzer mode spinner. */
+    private void showLessonMode(VisualizerView.Mode m) {
+        if (sonar.isRunning()) {
+            sonar.stop();
+            btnSonar.setText("▶ Увімкнути ехолот");
+            findViewById(R.id.hud).setVisibility(View.VISIBLE);
+            viz2d.clearSonar();
+        }
+        mode = -1;
+        viz3d.setVisibility(View.GONE);
+        viz2d.setVisibility(View.VISIBLE);
+        viz2d.setMode(m);
+    }
+
+    private void setupOtherSpinners() {
         spinner(R.id.spinPalette, "palette", 0, new String[]{
                 "Спектр", "Неон", "Вогонь", "Кіберпанк", "Монохром"
         }, new OnPick() {
@@ -380,7 +410,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         spinner(R.id.spinWave, "wave", 0, new String[]{
                 "Синус", "Меандр", "Пилка", "Трикутник", "Білий шум", "Рожевий шум",
                 "Лог. свіп 20 Гц – 20 кГц (8 с)", "Два тони: f + 7 кГц (IMD)", "Конструктор гармонік (вкладка «Навчання»)",
-                "Інтервал з двох нот (вкладка «Навчання»)"
+                "Інтервал з двох нот (вкладка «Навчання»)", "Звук уроку"
         }, new OnPick() {
             @Override public void pick(int i) { SignalGenerator.waveform = SignalGenerator.Waveform.values()[i]; }
         });
@@ -864,14 +894,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         });
 
         setupLabControls();
-        int[] expIds = {R.id.btnExp1, R.id.btnExp2, R.id.btnExp3, R.id.btnExp4, R.id.btnExp5, R.id.btnExp6,
-                R.id.btnExp7, R.id.btnExp8, R.id.btnExp9, R.id.btnExp10, R.id.btnExp11, R.id.btnExp12};
-        for (int i = 0; i < expIds.length; i++) {
-            final int n = i + 1;
-            findViewById(expIds[i]).setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { runExperiment(n); }
-            });
-        }
+        setupLearnHub();
     }
 
     private void setupLabControls() {
@@ -941,15 +964,696 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         ((Spinner) findViewById(spinnerId)).setSelection(pos);
     }
 
+    // ---------------------------------------------------------------- Sound Academy navigation
+
+    private static final String[] CATEGORIES = {"Основи звуку", "Музика і голос", "Фізика й техніка",
+            "Передача й творчість", "Ігри"};
+    private static final String[] CATEGORY_DESC = {
+            "Тон, гармоніки, ряд Фур'є, шум, звук у повітрі",
+            "Мелодія голосу, акорди, інтервали, ефекти голосу, пляшка",
+            "Луна, дискретизація, стоячі хвилі, швидкість звуку, слух",
+            "Малюнок у звук, звуковий модем, азбука Морзе",
+            "Тренажер слуху і тренажер ритму"};
+    /** {category, lesson id, title, one-line description} */
+    private static final Object[][] LESSONS = {
+            {0, 1, "Чистий тон", "Свисніть — один пік на спектрі"},
+            {0, 2, "Гармоніки", "Заспівайте «а-а-а» — бачите f0, 2×f0, 3×f0"},
+            {0, 3, "Звук із кіл", "Ряд Фур'є і конструктор гармонік"},
+            {0, 4, "Меандр", "Чому в ньому лише непарні гармоніки"},
+            {0, 5, "Шум проти тону", "Суцільна заливка замість ліній"},
+            {0, 10, "Звук у повітрі", "Молекули, тиск і довжина хвилі"},
+            {1, 7, "Мелодія голосу", "Висота голосу в часі на нотних лініях"},
+            {1, 8, "Нотне коло", "Які ноти звучать і який це акорд"},
+            {1, 9, "Інтервали", "Чому одні поєднання звучать гарно"},
+            {1, 16, "Ефекти голосу", "Гелій, робот, телефон, луна — і що вони роблять зі спектром"},
+            {1, 15, "Музична пляшка", "Резонанс: нота з пляшки і скільки налити води"},
+            {2, 11, "Луна кімнати", "Ляск у долоні і час згасання RT60"},
+            {2, 12, "Дискретизація", "Як телефон «бачить» звук; аліасинг"},
+            {2, 17, "Стоячі хвилі", "Гучні й тихі місця кімнати на низьких нотах"},
+            {2, 18, "Швидкість звуку", "Ляск перед стіною → 343 м/с"},
+            {2, 6, "Межа слуху", "Свіп 20 Гц – 20 кГц: де ви перестаєте чути"},
+            {2, 22, "Ехолот", "Відстань звуком, навіть ультразвуком"},
+            {3, 13, "Малюнок у звук", "Намалюйте — і побачте малюнок на спектрограмі"},
+            {3, 14, "Звуковий модем", "Передайте текст звуком між телефонами"},
+            {3, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
+            {4, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
+            {4, 21, "Тренажер ритму", "Плескайте під метроном — мілісекунди точності"},
+    };
+
+    private LinearLayout dyn;
+    private int learnCategory;
+    private int activeLesson;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private void setupLearnHub() {
+        dyn = (LinearLayout) findViewById(R.id.lessonDynamic);
+        LinearLayout cats = (LinearLayout) findViewById(R.id.learnCategories);
+        for (int c = 0; c < CATEGORIES.length; c++) {
+            final int cat = c;
+            Button b = card(CATEGORIES[c], CATEGORY_DESC[c]);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { showCategory(cat); }
+            });
+            cats.addView(b);
+        }
+        findViewById(R.id.btnLearnHome).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showLearnPage(0); }
+        });
+        findViewById(R.id.btnLearnBack).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                leaveLesson();
+                showCategory(learnCategory);
+            }
+        });
+    }
+
+    /** A themed button restyled like the XML ones (a defStyleRes alone would drop the background). */
+    private Button styledButton(int tint) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setTextSize(13);
+        b.setTextColor(0xFFE2E8F0);
+        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(tint));
+        return b;
+    }
+
+    private Button card(String title, String desc) {
+        Button b = styledButton(0xFF16233A);
+        b.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
+        b.setTextSize(14);
+        b.setPadding(dp(16), dp(12), dp(16), dp(12));
+        android.text.SpannableString t = new android.text.SpannableString(title + "\n" + desc);
+        t.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, title.length(), 0);
+        t.setSpan(new android.text.style.RelativeSizeSpan(0.82f), title.length() + 1, t.length(), 0);
+        t.setSpan(new android.text.style.ForegroundColorSpan(MUTED), title.length() + 1, t.length(), 0);
+        b.setText(t);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(6);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    /** 0 = sections, 1 = lessons of a section, 2 = one lesson. */
+    private void showLearnPage(int page) {
+        findViewById(R.id.learnHome).setVisibility(page == 0 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.learnList).setVisibility(page == 1 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.learnLesson).setVisibility(page == 2 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.controlsScroll).scrollTo(0, 0);
+    }
+
+    private void showCategory(int c) {
+        learnCategory = c;
+        text(R.id.txtCategoryTitle).setText(CATEGORIES[c]);
+        LinearLayout list = (LinearLayout) findViewById(R.id.lessonList);
+        list.removeAllViews();
+        for (final Object[] l : LESSONS) {
+            if ((Integer) l[0] != c) continue;
+            Button b = card((String) l[2], (String) l[3]);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { openLesson((Integer) l[1], (String) l[2]); }
+            });
+            list.addView(b);
+        }
+        showLearnPage(1);
+    }
+
+    void openLesson(int id, String title) {
+        if (id == 22) { // the sonar has its own tab
+            selectTab(5);
+            return;
+        }
+        activeLesson = id;
+        text(R.id.txtLessonTitle).setText(title);
+        showLearnPage(2);
+        runExperiment(id);
+    }
+
+    /** Stops lesson sounds and returns the display to the analyzer mode chosen in the spinner. */
+    private void leaveLesson() {
+        if (activeLesson == 0) return;
+        activeLesson = 0;
+        chkPlay.setChecked(false);
+        ((Button) findViewById(R.id.btnListen)).setText("▶ Слухати");
+        if (currentTape != null) closeTape();
+        dyn.removeAllViews();
+        useMode(((Spinner) findViewById(R.id.spinMode)).getSelectedItemPosition());
+    }
+
+    // ---------------------------------------------------------------- lesson sound & dynamic controls
+
+    private int bufferStopToken;
+
+    /** Plays a prepared sound through the speaker (and the internal source, if selected). */
+    private void playBuffer(float[] pcm, boolean loop) {
+        SignalGenerator.buffer = pcm;
+        SignalGenerator.bufferLoop = loop;
+        SignalGenerator.bufferVersion++;
+        SignalGenerator.waveform = SignalGenerator.Waveform.BUFFER;
+        Spinner w = (Spinner) findViewById(R.id.spinWave);
+        if (w.getSelectedItemPosition() != WAVE_BUFFER) w.setSelection(WAVE_BUFFER);
+        if (!chkPlay.isChecked()) chkPlay.setChecked(true);
+        final int token = ++bufferStopToken;
+        if (!loop) {
+            handler.postDelayed(new Runnable() {
+                @Override public void run() { if (token == bufferStopToken) chkPlay.setChecked(false); }
+            }, pcm.length * 1000L / 48000 + 600);
+        }
+    }
+
+    private void stopBuffer() {
+        bufferStopToken++;
+        chkPlay.setChecked(false);
+    }
+
+    private LinearLayout.LayoutParams full() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(4);
+        return lp;
+    }
+
+    private Button dynButton(LinearLayout parent, String label, View.OnClickListener l) {
+        Button b = styledButton(0xFF1E293B);
+        b.setText(label);
+        b.setOnClickListener(l);
+        if (parent == dyn) {
+            b.setLayoutParams(full());
+        } else {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMarginEnd(dp(4));
+            b.setLayoutParams(lp);
+        }
+        parent.addView(b);
+        return b;
+    }
+
+    private LinearLayout dynRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutParams(full());
+        dyn.addView(row);
+        return row;
+    }
+
+    private TextView dynLabel(String s) {
+        TextView t = new TextView(this, null, 0, R.style.Label);
+        t.setText(s);
+        t.setLayoutParams(full());
+        dyn.addView(t);
+        return t;
+    }
+
+    private interface Value { float of(int p); }
+
+    /** Slider whose label is String.format(fmt, value.of(progress)), kept up to date. */
+    private SeekBar dynSlider(final String fmt, final String key, int max, int def, final Value value, final OnPick onPick) {
+        final TextView t = dynLabel("");
+        SeekBar sb = new SeekBar(this);
+        sb.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36)));
+        sb.setMax(max);
+        sb.setProgress(Math.min(max, prefs.getInt(key, def)));
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int p, boolean fromUser) {
+                prefs.edit().putInt(key, p).apply();
+                t.setText(String.format(Locale.US, fmt, value.of(p)));
+                onPick.pick(p);
+                viz2d.invalidate();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {}
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        dyn.addView(sb);
+        t.setText(String.format(Locale.US, fmt, value.of(sb.getProgress())));
+        onPick.pick(sb.getProgress());
+        return sb;
+    }
+
+    private Spinner dynSpinner(String label, String[] items, int def, final OnPick onPick) {
+        dynLabel(label);
+        Spinner sp = new Spinner(this);
+        ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
+        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        sp.setAdapter(a);
+        sp.setBackgroundColor(0xFF1E293B);
+        sp.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+        sp.setSelection(def);
+        sp.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) { onPick.pick(pos); }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        dyn.addView(sp);
+        return sp;
+    }
+
+    private EditText dynEdit(String hint, String value) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setText(value);
+        e.setSingleLine(true);
+        e.setTextColor(0xFFE2E8F0);
+        e.setHintTextColor(MUTED);
+        e.setLayoutParams(full());
+        dyn.addView(e);
+        return e;
+    }
+
+    private void ensureLive(int source) {
+        if (currentTape != null) closeTape();
+        select(R.id.spinSource, source);
+        if (!engine.isRunning()) {
+            resumeOnStart = true;
+            startEngine();
+        }
+    }
+
+    // ---------------------------------------------------------------- the new lessons
+
+    private DrawLesson drawLesson;
+    private ModemLesson modemLesson;
+    private MorseLesson morseLesson;
+    private BottleLesson bottleLesson;
+    private RoomLesson roomLesson;
+    private SpeedLesson speedLesson;
+    private EarLesson earLesson;
+    private RhythmLesson rhythmLesson;
+    private float density() { return getResources().getDisplayMetrics().density; }
+
+    private String lessonDraw() {
+        if (drawLesson == null) {
+            drawLesson = new DrawLesson(density());
+            drawLesson.writeText("ПРИВІТ");
+        }
+        ensureLive(1);
+        chkPlay.setChecked(false);
+        viz2d.showLesson(drawLesson);
+        LinearLayout row = dynRow();
+        dynButton(row, "Очистити", new View.OnClickListener() {
+            @Override public void onClick(View v) { drawLesson.clear(); viz2d.showLesson(drawLesson); }
+        });
+        final Button eraser = dynButton(row, "Гумка", null);
+        eraser.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                drawLesson.eraser = !drawLesson.eraser;
+                eraser.setText(drawLesson.eraser ? "Пензлик" : "Гумка");
+                viz2d.showLesson(drawLesson);
+            }
+        });
+        dynButton(row, "Смайлик", new View.OnClickListener() {
+            @Override public void onClick(View v) { drawLesson.smiley(); viz2d.showLesson(drawLesson); }
+        });
+        final EditText name = dynEdit("Ваше ім'я або слово", prefs.getString("drawText", "ПРИВІТ"));
+        dynButton(dyn, "Написати текст на полотні", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String t = name.getText().toString().toUpperCase(Locale.ROOT);
+                prefs.edit().putString("drawText", t).apply();
+                drawLesson.writeText(t);
+                viz2d.showLesson(drawLesson);
+            }
+        });
+        Button play = dynButton(dyn, "▶ Програти і показати на спектрограмі", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (drawLesson.isEmpty()) { toast("Спершу щось намалюйте"); return; }
+                float[] pcm = drawLesson.synthesize(48000);
+                useMode(3);
+                playBuffer(pcm, false);
+            }
+        });
+        play.setTextColor(0xFF00F0FF);
+        dynButton(dyn, "✎ Повернутися до малювання", new View.OnClickListener() {
+            @Override public void onClick(View v) { stopBuffer(); viz2d.showLesson(drawLesson); }
+        });
+        return "Спектрограма показує, які частоти звучать у кожну мить. А що як піти навпаки — намалювати "
+                + "спектрограму і перетворити її на звук?\n\n"
+                + "Кожна клітинка полотна — короткий тон: стовпчик задає частоту, рядок — момент часу. Натисніть "
+                + "«Програти» — застосунок складе тони і покаже їх на спектрограмі: малюнок з'явиться знову.\n\n"
+                + "Найцікавіше: оберіть на вкладці «Керування» джерело «Мікрофон» і програйте ще раз — малюнок "
+                + "пролетить через повітря з динаміка в мікрофон. Музиканти ховали так картинки у свої треки.";
+    }
+
+    private String lessonModem() {
+        if (modemLesson == null) modemLesson = new ModemLesson(density());
+        ensureLive(0);
+        stopBuffer();
+        modemLesson.reset();
+        viz2d.showLesson(modemLesson);
+        final EditText msg = dynEdit("Повідомлення (до 48 байт)", prefs.getString("modemText", "Привіт! 👋"));
+        Button send = dynButton(dyn, "📤 Надіслати звуком", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String t = msg.getText().toString();
+                if (t.isEmpty()) return;
+                prefs.edit().putString("modemText", t).apply();
+                modemLesson.sent = t;
+                modemLesson.reset();
+                playBuffer(ModemLesson.encode(t, 48000), false);
+            }
+        });
+        send.setTextColor(0xFF00F0FF);
+        return "Так працювали модеми, факси і так досі «розмовляють» Wi-Fi та мобільний зв'язок — тільки "
+                + "радіохвилями: інформацію кодують частотами.\n\n"
+                + "Кожна буква перетворюється на байти, байт — на дві «половинки» по 4 біти, а кожна половинка — "
+                + "на один із 17 тонів. На смужках угорі видно, як повідомлення «звучить».\n\n"
+                + "Можна навіть одним телефоном: він сам себе почує. А ще краще — на двох: відкрийте цей урок на "
+                + "другому телефоні і надішліть повідомлення з першого. Контрольна сума перевірить, чи все дійшло без помилок.";
+    }
+
+    private String lessonMorse() {
+        if (morseLesson == null) morseLesson = new MorseLesson(density());
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(morseLesson);
+        dynSpinner("Абетка для розшифрування", new String[]{"Кирилиця", "Латиниця"}, morseLesson.cyrillic ? 0 : 1,
+                new OnPick() {
+                    @Override public void pick(int i) { morseLesson.cyrillic = i == 0; viz2d.invalidate(); }
+                });
+        final EditText msg = dynEdit("Текст", prefs.getString("morseText", "SOS"));
+        LinearLayout row = dynRow();
+        dynButton(row, "📤 Надіслати Морзе", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String t = msg.getText().toString();
+                prefs.edit().putString("morseText", t).apply();
+                morseLesson.sentMorse = MorseLesson.toMorse(t);
+                playBuffer(MorseLesson.encode(t, 48000), false);
+            }
+        });
+        dynButton(row, "Очистити", new View.OnClickListener() {
+            @Override public void onClick(View v) { morseLesson.clear(); viz2d.invalidate(); }
+        });
+        return "Азбука Морзе — найпростіший цифровий код: кожна буква — це короткі (крапка) і довгі (тире) сигнали. "
+                + "Тире втричі довше за крапку, пауза між буквами — теж три крапки.\n\n"
+                + "Надішліть текст — почуєте писк і побачите смужки. Або передавайте самі: свистіть коротко й "
+                + "довго (SOS — ... --- ...). Застосунок сам підлаштовується під вашу швидкість.";
+    }
+
+    private String lessonBottle() {
+        if (bottleLesson == null) bottleLesson = new BottleLesson(density());
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(bottleLesson);
+        final SeekBar[] sliders = new SeekBar[3];
+        dynSpinner("Тип пляшки", BottleLesson.PRESETS, prefs.getInt("bottlePreset", 0), new OnPick() {
+            boolean first = true;
+
+            @Override public void pick(int i) {
+                prefs.edit().putInt("bottlePreset", i).apply();
+                float[] d = BottleLesson.PRESET_DIMS[i];
+                // The spinner reports its initial selection too: keep the user's saved sizes then.
+                if (first) { first = false; return; }
+                if (sliders[0] != null) {
+                    sliders[0].setProgress(Math.round((d[0] - 100) / 10));
+                    sliders[1].setProgress(Math.round(d[1] - 10));
+                    sliders[2].setProgress(Math.round(d[2] - 10));
+                }
+            }
+        });
+        sliders[0] = dynSlider("Об'єм пляшки: %.0f мл", "bottleVol", 190, 40, new Value() {
+            @Override public float of(int p) { return 100 + p * 10; }
+        }, new OnPick() {
+            @Override public void pick(int p) { bottleLesson.volumeMl = 100 + p * 10; }
+        });
+        sliders[1] = dynSlider("Діаметр шийки: %.0f мм", "bottleDia", 30, 11, new Value() {
+            @Override public float of(int p) { return 10 + p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { bottleLesson.neckDiaMm = 10 + p; }
+        });
+        sliders[2] = dynSlider("Довжина шийки: %.0f мм", "bottleLen", 110, 15, new Value() {
+            @Override public float of(int p) { return 10 + p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { bottleLesson.neckLenMm = 10 + p; }
+        });
+        dynSlider("Налито води: %.0f%%", "bottleWater", 90, 0, new Value() {
+            @Override public float of(int p) { return p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { bottleLesson.waterPct = p; }
+        });
+        dynButton(dyn, "♪ Зіграти розрахункову ноту", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                float[] pcm = new float[48000];
+                LessonKit.addTone(pcm, 0, pcm.length, bottleLesson.predictHz(), 0.7f, 48000, 2400);
+                playBuffer(pcm, false);
+            }
+        });
+        return "Дмухніть через шийку пляшки — вона загуде. Повітря в шийці працює як поршень, а повітря всередині — "
+                + "як пружина. Така система має власну частоту — резонанс Гельмгольца.\n\n"
+                + "Більше повітря всередині — нижча нота; доливаєте воду — повітря менше, нота вища. Вузька й довга "
+                + "шийка — теж нижча нота.\n\n"
+                + "Задайте розміри своєї пляшки, дмухніть — і порівняйте розрахунок із тим, що почув мікрофон. "
+                + "Унизу таблиця: скільки води налити в кожну пляшку, щоб зіграти гаму.";
+    }
+
+    private short[] fxSource;
+    private int fxRate = 48000;
+
+    private String lessonVoiceFx() {
+        ensureLive(0);
+        stopBuffer();
+        fxSource = null;
+        useMode(3);
+        dynLabel("1) Скажіть фразу в мікрофон.  2) Натисніть ефект.");
+        LinearLayout row = null;
+        for (int i = 0; i < VoiceFx.NAMES.length; i++) {
+            if (i % 3 == 0) row = dynRow();
+            final int fx = i;
+            dynButton(row, VoiceFx.NAMES[i], new View.OnClickListener() {
+                @Override public void onClick(View v) { applyVoiceFx(fx); }
+            });
+        }
+        dynButton(dyn, "🎙 Записати нову фразу", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                fxSource = null;
+                if (currentTape != null) closeTape();
+                ensureLive(0);
+                useMode(3);
+                toast("Скажіть фразу, потім натисніть ефект");
+            }
+        });
+        return "Застосунок пам'ятає останні секунди звуку. Скажіть щось і натисніть ефект — запис обробиться і "
+                + "відкриється в «машині часу»: зі спектрограмою і відтворенням.\n\n"
+                + "Порівнюйте спектрограми: гелій піднімає всі частоти, телефон обрізає низ і верх, робот подвоює "
+                + "кожну лінію, луна повторює малюнок, а задом наперед — перевертає його в часі.";
+    }
+
+    private void applyVoiceFx(int fx) {
+        if (fxSource == null) {
+            AudioEngine.Tape h = engine.captureHistory();
+            if (h == null) { toast("Спершу скажіть щось у мікрофон"); return; }
+            int n = Math.min(h.pcm.length, h.rate * 4);
+            short[] last = new short[n];
+            System.arraycopy(h.pcm, h.pcm.length - n, last, 0, n);
+            fxSource = VoiceFx.trim(last, h.rate);
+            fxRate = h.rate;
+            if (fxSource == null) { toast("Не чути голосу — скажіть фразу голосніше"); return; }
+        }
+        short[] out = VoiceFx.apply(fx, fxSource, fxRate);
+        if (currentTape != null) engine.closeTape();
+        AudioEngine.Tape t = new AudioEngine.Tape(out, fxRate, "Ефект: " + VoiceFx.NAMES[fx], false);
+        useMode(3);
+        openTape(t, 0);
+        engine.setPlaying(true);
+        txtLesson.setText(VoiceFx.EXPLAIN[fx] + "\n\nНатисніть інший ефект або «Записати нову фразу».");
+    }
+
+    private String lessonRoom() {
+        if (roomLesson == null) roomLesson = new RoomLesson(density());
+        ensureLive(0);
+        roomLesson.resetHistory();
+        viz2d.showLesson(roomLesson);
+        dynSlider("Довжина кімнати: %.1f м", "roomL", 80, 25, new Value() {
+            @Override public float of(int p) { return 2 + p / 10f; }
+        }, new OnPick() {
+            @Override public void pick(int p) { roomLesson.lengthM = 2 + p / 10f; }
+        });
+        dynSlider("Ширина кімнати: %.1f м", "roomW", 80, 15, new Value() {
+            @Override public float of(int p) { return 2 + p / 10f; }
+        }, new OnPick() {
+            @Override public void pick(int p) { roomLesson.widthM = 2 + p / 10f; }
+        });
+        dynSlider("Висота стелі: %.1f м", "roomH", 20, 6, new Value() {
+            @Override public float of(int p) { return 2 + p / 10f; }
+        }, new OnPick() {
+            @Override public void pick(int p) { roomLesson.heightM = 2 + p / 10f; }
+        });
+        final SeekBar tone = dynSlider("Частота тону: %.0f Гц", "roomTone", 1000, 500, new Value() {
+            @Override public float of(int p) { return (float) (25 * Math.pow(12, p / 1000.0)); }
+        }, new OnPick() {
+            @Override public void pick(int p) { roomLesson.toneHz = (float) (25 * Math.pow(12, p / 1000.0)); // 25 .. 300 Hz
+                SignalGenerator.frequency = roomLesson.toneHz; }
+        });
+        LinearLayout row = dynRow();
+        dynButton(row, "◀ мода", new View.OnClickListener() {
+            @Override public void onClick(View v) { jumpMode(tone, -1); }
+        });
+        final Button play = dynButton(row, "▶ Тон", null);
+        play.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                boolean on = !(chkPlay.isChecked() && SignalGenerator.waveform == SignalGenerator.Waveform.SINE);
+                SignalGenerator.waveform = SignalGenerator.Waveform.SINE;
+                select(R.id.spinWave, 0);
+                SignalGenerator.frequency = roomLesson.toneHz;
+                chkPlay.setChecked(on);
+                play.setText(on ? "■ Тиша" : "▶ Тон");
+            }
+        });
+        dynButton(row, "мода ▶", new View.OnClickListener() {
+            @Override public void onClick(View v) { jumpMode(tone, 1); }
+        });
+        dynButton(dyn, "Скинути графік", new View.OnClickListener() {
+            @Override public void onClick(View v) { roomLesson.resetHistory(); }
+        });
+        return "Низький звук у кімнаті відбивається від стін і накладається сам на себе. На певних частотах (модах) "
+                + "утворюються стоячі хвилі: в одних місцях хвилі додаються — гучно (пучність), в інших гасять одна "
+                + "одну — тихо (вузол).\n\n"
+                + "Введіть розміри кімнати — угорі з'являться її моди. Увімкніть тон на одній із мод і повільно "
+                + "пройдіться з телефоном: графік покаже різницю між гучними й тихими місцями — буває 20 дБ і більше! "
+                + "Саме тому бас у кімнаті звучить по-різному в різних кутках.";
+    }
+
+    private void jumpMode(SeekBar tone, int dir) {
+        java.util.List<float[]> modes = roomLesson.modes();
+        float cur = roomLesson.toneHz, target = Float.NaN;
+        for (float[] m : modes) {
+            if (dir > 0 && m[0] > cur + 0.5f) { target = m[0]; break; }
+            if (dir < 0 && m[0] < cur - 0.5f) target = m[0];
+        }
+        if (Float.isNaN(target)) return;
+        tone.setProgress((int) Math.round(1000 * Math.log(target / 25.0) / Math.log(12)));
+        roomLesson.toneHz = target;
+        SignalGenerator.frequency = target;
+    }
+
+    private String lessonSpeed() {
+        if (speedLesson == null) speedLesson = new SpeedLesson(density());
+        ensureLive(0);
+        stopBuffer();
+        viz2d.showLesson(speedLesson);
+        dynSlider("Відстань до стіни: %.0f м", "speedDist", 48, 8, new Value() {
+            @Override public float of(int p) { return 2 + p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { speedLesson.distanceM = 2 + p; }
+        });
+        return "Звук летить приблизно 343 метри за секунду — у мільйон разів повільніше за світло. Це можна виміряти "
+                + "самому!\n\n"
+                + "Станьте навпроти великої стіни (надворі, 10–30 м), виміряйте відстань кроками і задайте її повзунком. "
+                + "Ляскніть один раз: звук долетить до стіни і повернеться. Застосунок знайде луну на графіку і "
+                + "порахує швидкість = 2 × відстань ÷ затримку.";
+    }
+
+    private String lessonEar() {
+        if (earLesson == null) {
+            earLesson = new EarLesson(density(), 48000, new EarLesson.Sound() {
+                @Override public void play(float[] pcm) { playBuffer(pcm, false); }
+            });
+        }
+        ensureLive(0);
+        viz2d.showLesson(earLesson);
+        final LinearLayout answers = new LinearLayout(this);
+        answers.setOrientation(LinearLayout.VERTICAL);
+        dynSpinner("Гра", new String[]{"Яка нота вища?", "Вгадай інтервал", "Повтори ноту голосом"},
+                earLesson.game.ordinal(), new OnPick() {
+                    @Override public void pick(int i) {
+                        earLesson.setGame(EarLesson.Game.values()[i]);
+                        buildAnswers(answers);
+                        viz2d.invalidate();
+                    }
+                });
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "▶ Нове завдання", new View.OnClickListener() {
+            @Override public void onClick(View v) { earLesson.newTask(); viz2d.invalidate(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "🔁 Ще раз", new View.OnClickListener() {
+            @Override public void onClick(View v) { earLesson.replay(); }
+        });
+        answers.setLayoutParams(full());
+        dyn.addView(answers);
+        buildAnswers(answers);
+        return "Слух можна тренувати, як м'язи. Почніть із «Яка нота вища?»: кожна правильна відповідь зменшує "
+                + "різницю між нотами — так ви дізнаєтесь, наскільки тонкий у вас слух (100 центів = півтон; "
+                + "музиканти чують 5–10 центів).\n\n"
+                + "«Вгадай інтервал» вчить чути відстань між нотами, як у музиці. «Повтори ноту голосом» — "
+                + "заспівайте почуту ноту і тримайте, поки смужка не заповниться.";
+    }
+
+    private void buildAnswers(LinearLayout answers) {
+        answers.removeAllViews();
+        String[] opts = earLesson.game == EarLesson.Game.HIGHER ? new String[]{"Перша вища", "Друга вища"}
+                : earLesson.game == EarLesson.Game.INTERVAL ? EarLesson.INTERVAL_NAMES : new String[0];
+        LinearLayout row = null;
+        for (int i = 0; i < opts.length; i++) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setLayoutParams(full());
+                answers.addView(row);
+            }
+            final int choice = i;
+            dynButton(row, opts[i], new View.OnClickListener() {
+                @Override public void onClick(View v) { earLesson.answer(choice); viz2d.invalidate(); }
+            });
+        }
+    }
+
+    private String lessonRhythm() {
+        if (rhythmLesson == null) rhythmLesson = new RhythmLesson(density());
+        ensureLive(0);
+        stopBuffer();
+        rhythmLesson.reset();
+        viz2d.showLesson(rhythmLesson);
+        dynSlider("Темп: %.0f ударів за хвилину", "rhythmBpm", 130, 40, new Value() {
+            @Override public float of(int p) { return 50 + p; }
+        }, new OnPick() {
+            @Override public void pick(int p) {
+                rhythmLesson.bpm = 50 + p;
+                if (chkPlay.isChecked() && SignalGenerator.waveform == SignalGenerator.Waveform.BUFFER && SignalGenerator.bufferLoop) {
+                    playBuffer(RhythmLesson.metronome(rhythmLesson.bpm, 48000), true);
+                }
+            }
+        });
+        LinearLayout row = dynRow();
+        final Button start = dynButton(row, "▶ Старт метронома", null);
+        start.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (chkPlay.isChecked()) {
+                    stopBuffer();
+                    start.setText("▶ Старт метронома");
+                } else {
+                    rhythmLesson.reset();
+                    playBuffer(RhythmLesson.metronome(rhythmLesson.bpm, 48000), true);
+                    start.setText("■ Стоп");
+                }
+            }
+        });
+        dynButton(row, "Скинути", new View.OnClickListener() {
+            @Override public void onClick(View v) { rhythmLesson.reset(); viz2d.invalidate(); }
+        });
+        return "Відчуття ритму теж тренується. Увімкніть метроном і плескайте разом із ним.\n\n"
+                + "Мікрофон чує і клацання метронома, і ваші оплески — тому застосунок точно знає, на скільки "
+                + "мілісекунд ви поспішаєте чи запізнюєтесь, і наскільки рівно плескаєте. Барабанщики тримають "
+                + "розкид у межах ±10–20 мс. Спробуйте повільний і швидкий темп — що легше?";
+    }
+
     private void runExperiment(int n) {
         if (currentTape != null) closeTape();
         ((CheckBox) findViewById(R.id.chkHints)).setChecked(true);
         findViewById(R.id.intervalControls).setVisibility(n == 9 ? View.VISIBLE : View.GONE);
         findViewById(R.id.samplingControls).setVisibility(n == 12 ? View.VISIBLE : View.GONE);
+        findViewById(R.id.harmonicControls).setVisibility(n == 3 || n == 4 ? View.VISIBLE : View.GONE);
+        dyn.removeAllViews();
         String text;
         switch (n) {
+            case 13: text = lessonDraw(); break;
+            case 14: text = lessonModem(); break;
+            case 15: text = lessonBottle(); break;
+            case 16: text = lessonVoiceFx(); break;
+            case 17: text = lessonRoom(); break;
+            case 18: text = lessonSpeed(); break;
+            case 19: text = lessonMorse(); break;
+            case 20: text = lessonEar(); break;
+            case 21: text = lessonRhythm(); break;
             case 7:
-                select(R.id.spinMode, MODE_PITCH);
+                showLessonMode(MODES_2D[MODE_PITCH]);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Співайте, наспівуйте або просто говоріть. Лінія показує висоту голосу в часі поверх нотних ліній "
@@ -958,7 +1662,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "У звичайній мові висота постійно «їде» — це інтонація: питання закінчується вгору.";
                 break;
             case 8:
-                select(R.id.spinMode, MODE_CHROMA);
+                showLessonMode(MODES_2D[MODE_CHROMA]);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Нотне коло «згортає» всі октави: до будь-якої висоти потрапляє в сектор «до». "
@@ -970,7 +1674,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 SignalGenerator.waveform = SignalGenerator.Waveform.INTERVAL;
                 SignalGenerator.frequency = 220f;
                 select(R.id.spinWave, WAVE_INTERVAL);
-                select(R.id.spinMode, MODE_INTERVALS);
+                showLessonMode(MODES_2D[MODE_INTERVALS]);
                 select(R.id.spinSource, 1);
                 chkPlay.setChecked(true);
                 text = "Дві ноти звучать разом. Вгорі — фігура Ліссажу: по горизонталі нижня нота, по вертикалі верхня. "
@@ -980,7 +1684,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "биття зникає, коли ноти збіглися.";
                 break;
             case 10:
-                select(R.id.spinMode, MODE_AIR);
+                showLessonMode(MODES_2D[MODE_AIR]);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Звук — це хвиля тиску в повітрі. Молекули не летять від вас до телефона: вони коливаються на місці, "
@@ -989,7 +1693,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "високий свист (3 кГц) — лише 11 см. Тому басом легко «пробити» стіну, а високі звуки глушаться.";
                 break;
             case 11:
-                select(R.id.spinMode, MODE_ECHO);
+                showLessonMode(MODES_2D[MODE_ECHO]);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Після різкого звуку кімната ще деякий час «дзвенить» — звук відбивається від стін. "
@@ -998,7 +1702,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "і сходи: м'які речі поглинають звук, тверді стіни — відбивають.";
                 break;
             case 12:
-                select(R.id.spinMode, MODE_SAMPLING);
+                showLessonMode(MODES_2D[MODE_SAMPLING]);
                 chkPlay.setChecked(false);
                 text = "Телефон не записує хвилю цілком — лише вимірює її багато разів на секунду (точки). "
                         + "За точками він потім відновлює звук.\n\n"
@@ -1007,7 +1711,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "Тому звук пишуть із частотою 44,1–48 кГц: це вдвічі більше за межу слуху (20 кГц).";
                 break;
             case 1:
-                select(R.id.spinMode, 0);
+                useMode(0);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Свисніть рівно. На спектрі з'явиться один гострий пік — це чистий тон, майже синусоїда.\n\n"
@@ -1015,7 +1719,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                         + "та сама нота, тільки вище.\n\nКартка внизу графіка називає частоту й ноту.";
                 break;
             case 2:
-                select(R.id.spinMode, 0);
+                useMode(0);
                 select(R.id.spinSource, 0);
                 chkPlay.setChecked(false);
                 text = "Протягніть «а-а-а» на одній ноті. Тепер піків багато, і вони стоять на однакових відстанях: "
@@ -1026,7 +1730,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 break;
             case 3:
                 applyPreset(PRESETS[1]);
-                select(R.id.spinMode, MODE_FOURIER);
+                showLessonMode(MODES_2D[MODE_FOURIER]);
                 select(R.id.spinSource, 1);
                 chkPlay.setChecked(true);
                 text = "Будь-який повторюваний звук можна скласти з синусоїд — це ряд Фур'є.\n\n"
@@ -1037,7 +1741,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 break;
             case 4:
                 applyPreset(PRESETS[2]);
-                select(R.id.spinMode, 0);
+                useMode(0);
                 select(R.id.spinSource, 1);
                 chkPlay.setChecked(true);
                 text = "Меандр (прямокутна хвиля) складається лише з непарних гармонік: 1×, 3×, 5×, 7×… "
@@ -1048,7 +1752,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 5:
                 SignalGenerator.waveform = SignalGenerator.Waveform.PINK_NOISE;
                 select(R.id.spinWave, 5);
-                select(R.id.spinMode, 3);
+                useMode(3);
                 select(R.id.spinSource, 1);
                 chkPlay.setChecked(true);
                 text = "Рожевий шум: енергія розмазана по всіх частотах, тому спектрограма — суцільна заливка, а не лінії. "
@@ -1059,7 +1763,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             default:
                 SignalGenerator.waveform = SignalGenerator.Waveform.LOG_SWEEP;
                 select(R.id.spinWave, 6);
-                select(R.id.spinMode, 3);
+                useMode(3);
                 select(R.id.spinSource, 1);
                 chkPlay.setChecked(true);
                 text = "Частота плавно росте від 20 Гц до 20 кГц за 8 секунд — на спектрограмі це діагональ.\n\n"

@@ -2,7 +2,7 @@ package com.example.audiospectrumpro;
 
 /** RBJ-cookbook biquad used as an optional pre-filter before analysis. */
 public class BiquadFilter {
-    public enum Type { ALLPASS, NOTCH50, HIGHPASS100, LOWPASS5000, BANDPASS1K, HIGHPASS500 }
+    public enum Type { ALLPASS, NOTCH50, HIGHPASS100, LOWPASS5000, BANDPASS1K, HIGHPASS500, CUSTOM }
 
     private float b0 = 1, b1, b2, a1, a2;
     private float x1, x2, y1, y2;
@@ -41,6 +41,21 @@ public class BiquadFilter {
         }
         b0 = (float) (nb0 / a0); b1 = (float) (nb1 / a0); b2 = (float) (nb2 / a0);
         a1 = (float) (na1 / a0); a2 = (float) (na2 / a0);
+    }
+
+    /** Arbitrary Butterworth-style high- or low-pass (used by the voice effects). */
+    public synchronized void setCustom(boolean highPass, double fc, double q, float sampleRate) {
+        type = Type.CUSTOM;
+        x1 = x2 = y1 = y2 = 0;
+        double w0 = 2 * Math.PI * fc / sampleRate, alpha = Math.sin(w0) / (2 * q), c = Math.cos(w0);
+        double a0 = 1 + alpha;
+        double nb0 = highPass ? (1 + c) / 2 : (1 - c) / 2;
+        double nb1 = highPass ? -(1 + c) : 1 - c;
+        b0 = (float) (nb0 / a0);
+        b1 = (float) (nb1 / a0);
+        b2 = (float) (nb0 / a0);
+        a1 = (float) (-2 * c / a0);
+        a2 = (float) ((1 - alpha) / a0);
     }
 
     public synchronized void process(float[] buf, int len) {

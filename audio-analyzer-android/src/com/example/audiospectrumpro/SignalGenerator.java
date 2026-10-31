@@ -7,7 +7,7 @@ import java.util.Random;
  * the loudspeaker output always produce the same signal; each instance keeps its own phase.
  */
 final class SignalGenerator {
-    enum Waveform { SINE, SQUARE, SAWTOOTH, TRIANGLE, WHITE_NOISE, PINK_NOISE, LOG_SWEEP, DUAL_TONE, HARMONICS, INTERVAL }
+    enum Waveform { SINE, SQUARE, SAWTOOTH, TRIANGLE, WHITE_NOISE, PINK_NOISE, LOG_SWEEP, DUAL_TONE, HARMONICS, INTERVAL, BUFFER }
 
     static final float SWEEP_SECONDS = 8f;
 
@@ -19,14 +19,28 @@ final class SignalGenerator {
     /** INTERVAL waveform: second tone at frequency * intervalRatio + intervalDetuneHz. */
     static volatile float intervalRatio = 1.5f;
     static volatile float intervalDetuneHz = 0f;
+    /** BUFFER waveform: a prepared lesson sound, played once (or looped) from the start on each new version. */
+    static volatile float[] buffer = new float[0];
+    static volatile int bufferVersion;
+    static volatile boolean bufferLoop;
 
     private final Random random = new Random();
     private double phase, phase2, sweepT;
     private float b0, b1, b2, b3, b4, b5, b6;
+    private int bufferPos, seenVersion = -1;
 
     void fill(float[] out, int len, int sampleRate) {
         Waveform wf = waveform;
         float vol = level;
+        if (wf == Waveform.BUFFER) {
+            float[] b = buffer;
+            if (seenVersion != bufferVersion) { seenVersion = bufferVersion; bufferPos = 0; }
+            for (int i = 0; i < len; i++) {
+                if (bufferPos >= b.length && bufferLoop && b.length > 0) bufferPos = 0;
+                out[i] = bufferPos < b.length ? b[bufferPos++] * vol * 2f : 0f;
+            }
+            return;
+        }
         double f = frequency;
         for (int i = 0; i < len; i++) {
             double fi = f;

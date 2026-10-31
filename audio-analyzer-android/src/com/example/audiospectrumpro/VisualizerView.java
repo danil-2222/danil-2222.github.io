@@ -26,7 +26,7 @@ import java.util.Locale;
  * pan the frequency axis, double tap resets the zoom, long press toggles full screen.
  */
 public class VisualizerView extends View {
-    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER, PITCH, CHROMA, INTERVALS, AIR, ECHO, SAMPLING, SONAR }
+    public enum Mode { LINE, BARS, RTA, WATERFALL, OSCILLOSCOPE, TUNER, FOURIER, PITCH, CHROMA, INTERVALS, AIR, ECHO, SAMPLING, SONAR, LESSON }
 
     public interface Callbacks {
         void onToggleFullscreen();
@@ -118,6 +118,7 @@ public class VisualizerView extends View {
     private final long animStart = System.currentTimeMillis();
     private LessonRenderer lesson;
     private SonarRenderer sonar;
+    private LessonView lessonView;
     private static final int[] HARM_COLORS = {
             0xFF00F0FF, 0xFFFFE600, 0xFF39FF14, 0xFFFF8800, 0xFFFF007F, 0xFFB388FF,
             0xFF64FFDA, 0xFFFF5252, 0xFF82B1FF, 0xFFFFD180, 0xFFCCFF90, 0xFFEA80FC};
@@ -272,6 +273,12 @@ public class VisualizerView extends View {
 
     public void setSonarBand(String band) { sonar.setBand(band); }
 
+    /** Shows an interactive lesson (Mode.LESSON). */
+    public void showLesson(LessonView l) {
+        lessonView = l;
+        setMode(Mode.LESSON);
+    }
+
     public void clearSonar() {
         sonar.clear();
         invalidate();
@@ -319,6 +326,7 @@ public class VisualizerView extends View {
         if (mode == Mode.RTA) computeRta(f);
         if (showHints || mode == Mode.FOURIER || mode == Mode.AIR) explanation = SoundExplainer.explain(f, a4);
         if (mode == Mode.FOURIER || mode == Mode.AIR) computeEpicycles(f);
+        if (mode == Mode.LESSON && lessonView != null) lessonView.onFrame(f);
         if (mode == Mode.PITCH) lesson.pitchFrame(f);
         if (mode == Mode.CHROMA) lesson.chromaFrame(f, a4);
         if (mode == Mode.ECHO) lesson.echoFrame(f);
@@ -392,6 +400,11 @@ public class VisualizerView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
+        if (mode == Mode.LESSON && lessonView != null) {
+            boolean used = lessonView.onTouch(e, getWidth(), getHeight());
+            invalidate();
+            if (used) return true;
+        }
         scaleDetector.onTouchEvent(e);
         gestureDetector.onTouchEvent(e);
         if (!zoomable()) return true;
@@ -481,6 +494,12 @@ public class VisualizerView extends View {
             case ECHO: lesson.drawEcho(canvas, getWidth(), getHeight()); break;
             case SAMPLING: lesson.drawSampling(canvas, getWidth(), getHeight()); break;
             case SONAR: sonar.draw(canvas, getWidth(), getHeight()); break;
+            case LESSON:
+                if (lessonView != null) {
+                    lessonView.draw(canvas, getWidth(), getHeight());
+                    if (lessonView.animating()) postInvalidateOnAnimation();
+                }
+                break;
         }
         if (f != null && cursorX >= 0 && zoomable()) drawCursor(canvas, f);
         if (zoomable() && (u0 > 0 || u1 < 1)) {
@@ -493,7 +512,8 @@ public class VisualizerView extends View {
             text.setColor(LABEL);
             text.setTextAlign(Paint.Align.LEFT);
         }
-        if (f == null && mode != Mode.INTERVALS && mode != Mode.SAMPLING && mode != Mode.SONAR) {
+        if (f == null && mode != Mode.INTERVALS && mode != Mode.SAMPLING && mode != Mode.SONAR
+                && mode != Mode.LESSON) {
             text.setTextAlign(Paint.Align.CENTER);
             text.setTextSize(14 * dp);
             canvas.drawText("Натисніть «Старт»", getWidth() / 2f, plot.centerY(), text);
@@ -804,7 +824,8 @@ public class VisualizerView extends View {
         SpectrumMath.columns(f.spectrumDb, f.binHz, logScale, lo, hi, cols);
         int[] lut = Palettes.lut(palette);
         for (int x = 0; x < w; x++) wfRow[x] = lut[(int) (level(cols[x]) * 255)];
-        for (int r = 0; r < repeat; r++) {
+        int rows = repeat * Math.max(1, Math.round(dp * 0.7f));
+        for (int r = 0; r < rows; r++) {
             wfHead = (wfHead - 1 + h) % h;
             wfBitmap.setPixels(wfRow, 0, w, 0, wfHead, w, 1);
             if (wfRows < h) wfRows++;
@@ -888,7 +909,7 @@ public class VisualizerView extends View {
         drawFreqGrid(c, false);
         AudioEngine.Frame f = frame;
         if (f != null) {
-            float secPerRow = 1024f / f.sampleRate;
+            float secPerRow = 1024f / f.sampleRate / Math.max(1, Math.round(dp * 0.7f));
             float secs = plot.height() * secPerRow;
             text.setTextAlign(Paint.Align.LEFT);
             c.drawText(String.format(Locale.US, "↓ %.0f с", secs), plot.left + 4 * dp, plot.bottom - 4 * dp, text);

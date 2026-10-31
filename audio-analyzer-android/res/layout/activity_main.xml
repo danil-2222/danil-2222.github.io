@@ -217,73 +217,76 @@
                 android:orientation="vertical"
                 android:padding="10dp"
                 android:visibility="gone">
-                <CheckBox android:id="@+id/chkHints" style="@style/Check" android:text="Підказки на графіку: що це за звук" />
-                <TextView android:id="@+id/txtLesson" style="@style/Lesson" android:text="Оберіть дослід нижче. Кожен налаштує екран і пояснить, на що дивитися." />
-                <LinearLayout android:id="@+id/intervalControls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-                    <TextView style="@style/Label" android:text="Інтервал (друга нота відносно першої)" />
-                    <Spinner android:id="@+id/spinInterval" style="@style/Picker" />
-                    <TextView android:id="@+id/lblDetune" style="@style/Label" android:text="Розстроювання" />
-                    <SeekBar android:id="@+id/seekDetune" style="@style/Slider" />
+                <LinearLayout android:id="@+id/learnHome" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <TextView style="@style/LessonTitle" android:text="Академія звуку" />
+                    <TextView style="@style/Hint" android:layout_marginTop="2dp" android:text="Оберіть розділ. Кожен урок сам налаштує екран і пояснить, на що дивитися." />
+                    <LinearLayout android:id="@+id/learnCategories" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+                    <CheckBox android:id="@+id/chkHints" style="@style/Check" android:text="Підказки на графіку: що це за звук" />
                 </LinearLayout>
-                <LinearLayout android:id="@+id/samplingControls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-                    <TextView android:id="@+id/lblSampleSig" style="@style/Label" android:text="Частота сигналу" />
-                    <SeekBar android:id="@+id/seekSampleSig" style="@style/Slider" />
-                    <TextView android:id="@+id/lblSampleRate" style="@style/Label" android:text="Частота дискретизації" />
-                    <SeekBar android:id="@+id/seekSampleRate" style="@style/Slider" />
+                <LinearLayout android:id="@+id/learnList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <Button android:id="@+id/btnLearnHome" style="@style/BackBtn" android:text="← Усі розділи" />
+                    <TextView android:id="@+id/txtCategoryTitle" style="@style/LessonTitle" />
+                    <LinearLayout android:id="@+id/lessonList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
                 </LinearLayout>
-                <TextView style="@style/Label" android:text="Досліди" />
-                <Button android:id="@+id/btnExp1" style="@style/ExpBtn" android:text="1. Свисніть: чистий тон" />
-                <Button android:id="@+id/btnExp2" style="@style/ExpBtn" android:text="2. Заспівайте «а-а-а»: гармоніки" />
-                <Button android:id="@+id/btnExp3" style="@style/ExpBtn" android:text="3. Звук із кіл (ряд Фур'є)" />
-                <Button android:id="@+id/btnExp4" style="@style/ExpBtn" android:text="4. Меандр: лише непарні гармоніки" />
-                <Button android:id="@+id/btnExp5" style="@style/ExpBtn" android:text="5. Шум проти тону" />
-                <Button android:id="@+id/btnExp6" style="@style/ExpBtn" android:text="6. Свіп: перевірте свій слух" />
-                <TextView style="@style/Label" android:text="Лабораторія: музика і фізика звуку" />
-                <Button android:id="@+id/btnExp7" style="@style/ExpBtn" android:text="7. Мелодія голосу: висота в часі" />
-                <Button android:id="@+id/btnExp8" style="@style/ExpBtn" android:text="8. Нотне коло: ноти й акорди" />
-                <Button android:id="@+id/btnExp9" style="@style/ExpBtn" android:text="9. Інтервали: чому звучить гарно" />
-                <Button android:id="@+id/btnExp10" style="@style/ExpBtn" android:text="10. Звук у повітрі: хвиля і її довжина" />
-                <Button android:id="@+id/btnExp11" style="@style/ExpBtn" android:text="11. Луна кімнати: ляскніть у долоні" />
-                <Button android:id="@+id/btnExp12" style="@style/ExpBtn" android:text="12. Дискретизація: як телефон «бачить» звук" />
-                <TextView style="@style/Label" android:text="Конструктор гармонік: зберіть звук сам" />
-                <TextView style="@style/Hint" android:layout_marginTop="2dp" android:text="Кожен повзунок — гучність однієї гармоніки (кратної основній частоті). Увімкніть «Слухати» і подивіться на режим «Фур'є: кола»." />
-                <LinearLayout style="@style/Row">
-                    <Button android:id="@+id/btnPresetSine" style="@style/TapeBtn" android:layout_weight="1" android:text="Синус" />
-                    <Button android:id="@+id/btnPresetSaw" style="@style/TapeBtn" android:layout_weight="1" android:text="Пилка" />
-                    <Button android:id="@+id/btnPresetSquare" style="@style/TapeBtn" android:layout_weight="1" android:text="Меандр" />
-                    <Button android:id="@+id/btnPresetClarinet" style="@style/TapeBtn" android:layout_weight="1" android:text="Кларнет" />
+                <LinearLayout android:id="@+id/learnLesson" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <Button android:id="@+id/btnLearnBack" style="@style/BackBtn" android:text="← До уроків" />
+                    <TextView android:id="@+id/txtLessonTitle" style="@style/LessonTitle" />
+                    <LinearLayout android:id="@+id/lessonDynamic" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+                    <LinearLayout android:id="@+id/intervalControls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                        <TextView style="@style/Label" android:text="Інтервал (друга нота відносно першої)" />
+                        <Spinner android:id="@+id/spinInterval" style="@style/Picker" />
+                        <TextView android:id="@+id/lblDetune" style="@style/Label" android:text="Розстроювання" />
+                        <SeekBar android:id="@+id/seekDetune" style="@style/Slider" />
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/samplingControls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                        <TextView android:id="@+id/lblSampleSig" style="@style/Label" android:text="Частота сигналу" />
+                        <SeekBar android:id="@+id/seekSampleSig" style="@style/Slider" />
+                        <TextView android:id="@+id/lblSampleRate" style="@style/Label" android:text="Частота дискретизації" />
+                        <SeekBar android:id="@+id/seekSampleRate" style="@style/Slider" />
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/harmonicControls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                        <TextView style="@style/Label" android:text="Конструктор гармонік: зберіть звук сам" />
+                        <TextView style="@style/Hint" android:layout_marginTop="2dp" android:text="Кожен повзунок — гучність однієї гармоніки (кратної основній частоті). Увімкніть «Слухати» і подивіться на режим «Фур'є: кола»." />
+                        <LinearLayout style="@style/Row">
+                            <Button android:id="@+id/btnPresetSine" style="@style/TapeBtn" android:layout_weight="1" android:text="Синус" />
+                            <Button android:id="@+id/btnPresetSaw" style="@style/TapeBtn" android:layout_weight="1" android:text="Пилка" />
+                            <Button android:id="@+id/btnPresetSquare" style="@style/TapeBtn" android:layout_weight="1" android:text="Меандр" />
+                            <Button android:id="@+id/btnPresetClarinet" style="@style/TapeBtn" android:layout_weight="1" android:text="Кларнет" />
+                        </LinearLayout>
+                        <LinearLayout style="@style/Row" android:layout_marginTop="4dp">
+                            <Button android:id="@+id/btnPresetOrgan" style="@style/TapeBtn" android:layout_weight="1" android:text="Орган" />
+                            <Button android:id="@+id/btnPresetVoice" style="@style/TapeBtn" android:layout_weight="1" android:text="Голос «а»" />
+                            <Button android:id="@+id/btnListen" style="@style/TapeBtn" android:layout_weight="2" android:text="▶ Слухати" android:textColor="#00F0FF" />
+                        </LinearLayout>
+                        <TextView android:id="@+id/lblHarmF0" style="@style/Label" android:text="Основна частота" />
+                        <SeekBar android:id="@+id/seekHarmF0" style="@style/Slider" />
+                        <TextView android:id="@+id/lblH1" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH1" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH2" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH2" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH3" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH3" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH4" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH4" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH5" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH5" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH6" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH6" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH7" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH7" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH8" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH8" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH9" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH9" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH10" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH10" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH11" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH11" style="@style/HarmSlider" />
+                        <TextView android:id="@+id/lblH12" style="@style/HarmLabel" />
+                        <SeekBar android:id="@+id/seekH12" style="@style/HarmSlider" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/txtLesson" style="@style/Lesson" />
                 </LinearLayout>
-                <LinearLayout style="@style/Row" android:layout_marginTop="4dp">
-                    <Button android:id="@+id/btnPresetOrgan" style="@style/TapeBtn" android:layout_weight="1" android:text="Орган" />
-                    <Button android:id="@+id/btnPresetVoice" style="@style/TapeBtn" android:layout_weight="1" android:text="Голос «а»" />
-                    <Button android:id="@+id/btnListen" style="@style/TapeBtn" android:layout_weight="2" android:text="▶ Слухати" android:textColor="#00F0FF" />
-                </LinearLayout>
-                <TextView android:id="@+id/lblHarmF0" style="@style/Label" android:text="Основна частота" />
-                <SeekBar android:id="@+id/seekHarmF0" style="@style/Slider" />
-                <TextView android:id="@+id/lblH1" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH1" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH2" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH2" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH3" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH3" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH4" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH4" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH5" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH5" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH6" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH6" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH7" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH7" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH8" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH8" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH9" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH9" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH10" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH10" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH11" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH11" style="@style/HarmSlider" />
-                <TextView android:id="@+id/lblH12" style="@style/HarmLabel" />
-                <SeekBar android:id="@+id/seekH12" style="@style/HarmSlider" />
             </LinearLayout>
             <LinearLayout
                 android:id="@+id/panelSonar"
