@@ -95,6 +95,8 @@ public class AudioEngine {
     private volatile boolean running;
     private volatile boolean resetPeaks;
     private volatile int actualSampleRate;
+    /** Incremented on every start so a capture thread from an earlier start can never keep running. */
+    private volatile int generation;
 
     // Live-input history ring buffer (raw samples, before gain and filter).
     private short[] history;
@@ -218,8 +220,10 @@ public class AudioEngine {
             historyCount = 0;
         }
         running = true;
+        final int gen = ++generation;
+        final AudioRecord rec = record;
         thread = new Thread(new Runnable() {
-            @Override public void run() { loop(); }
+            @Override public void run() { loop(gen, rec); }
         }, "AudioEngine");
         thread.setPriority(Thread.MAX_PRIORITY);
         thread.start();
@@ -313,7 +317,7 @@ public class AudioEngine {
 
     // ---------------------------------------------------------------- processing
 
-    private void loop() {
+    private void loop(int gen, AudioRecord record) {
         final int rate = actualSampleRate;
         float[] ring = new float[0];
         short[] pcm = new short[HOP];
@@ -321,7 +325,7 @@ public class AudioEngine {
         boolean micWarned = false;
 
         try {
-            while (running) {
+            while (running && gen == generation) {
                 analyzer.configure(requestedFftSize, requestedWindow);
                 int size = analyzer.size();
                 if (ring.length != size) ring = new float[size];

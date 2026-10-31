@@ -318,6 +318,13 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
 
     /** Shows analyzer mode i (index into the mode spinner). */
     private void applyMode(int i) {
+                if (ready && i >= 7) {
+                    Spinner src = (Spinner) findViewById(R.id.spinSource);
+                    if (src.getSelectedItemPosition() != 0) {
+                        src.setSelection(0);
+                        toast("🎓 Цей режим слухає мікрофон — джерело перемкнено на мікрофон");
+                    }
+                }
                 mode = i;
                 if (ready && sonar.isRunning()) sonar.stop();
                 if (ready) {
@@ -529,8 +536,10 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         int count = s.getAdapter().getCount();
         int saved = prefs.getInt(key, def);
         s.setSelection(saved >= 0 && saved < count ? saved : def);
+        final int initial = s.getSelectedItemPosition();
         s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            int last = -1;
+            // The spinner also reports its initial selection after layout; that one is already applied below.
+            int last = initial;
 
             @Override public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 if (pos == last) return;
@@ -1015,8 +1024,24 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 21, "Тренажер ритму", "Плескайте під метроном — мілісекунди точності"},
     };
 
+    /** Lessons that only show synthetic sound (the microphone is not used). */
+    private static final java.util.Set<Integer> NO_MIC = new java.util.HashSet<>(java.util.Arrays.asList(3, 4, 6, 9, 12, 27, 28));
+    /** Lessons that work with the microphone and also have a built-in demo sound. */
+    private static final java.util.Set<Integer> MIC_AND_DEMO = new java.util.HashSet<>(java.util.Arrays.asList(5, 13, 14, 19, 20, 24, 26));
+
+    private static String micBadge(int id) {
+        return NO_MIC.contains(id) ? "🎹" : MIC_AND_DEMO.contains(id) ? "🎙🎹" : "🎙";
+    }
+
+    private static String micNote(int id) {
+        if (NO_MIC.contains(id)) return "🎹 Мікрофон у цьому уроці не використовується — він показує штучний сигнал.";
+        if (MIC_AND_DEMO.contains(id)) return "🎙🎹 Працює з мікрофоном, а також має вбудований демо-звук.";
+        return "🎙 Урок слухає мікрофон — говоріть, співайте, свистіть.";
+    }
+
     private LinearLayout dyn;
     private int learnCategory;
+    private int sourceBeforeLesson = -1;
     private int activeLesson;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -1086,7 +1111,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         list.removeAllViews();
         for (final Object[] l : LESSONS) {
             if ((Integer) l[0] != c) continue;
-            Button b = card((String) l[2], (String) l[3]);
+            Button b = card(micBadge((Integer) l[1]) + "  " + l[2], (String) l[3]);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { openLesson((Integer) l[1], (String) l[2]); }
             });
@@ -1102,6 +1127,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         }
         activeLesson = id;
         text(R.id.txtLessonTitle).setText(title);
+        if (sourceBeforeLesson < 0) sourceBeforeLesson = ((Spinner) findViewById(R.id.spinSource)).getSelectedItemPosition();
         showLearnPage(2);
         runExperiment(id);
     }
@@ -1111,6 +1137,10 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         if (activeLesson == 0) return;
         activeLesson = 0;
         SignalGenerator.eqOn = false;
+        if (sourceBeforeLesson >= 0) {
+            select(R.id.spinSource, sourceBeforeLesson);
+            sourceBeforeLesson = -1;
+        }
         chkPlay.setChecked(false);
         ((Button) findViewById(R.id.btnListen)).setText("▶ Слухати");
         if (currentTape != null) closeTape();
@@ -2042,7 +2072,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 break;
         }
         ((Button) findViewById(R.id.btnListen)).setText(chkPlay.isChecked() ? "■ Тиша" : "▶ Слухати");
-        txtLesson.setText(text);
+        txtLesson.setText(micNote(n) + "\n\n" + text);
         if (!engine.isRunning()) {
             resumeOnStart = true;
             startEngine();

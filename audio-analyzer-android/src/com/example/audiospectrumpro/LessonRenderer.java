@@ -525,6 +525,8 @@ final class LessonRenderer {
         double acc = 0;
         for (int i = n - 1; i >= peak; i--) { acc += e[i]; edc[i] = acc; }
         if (edc[peak] <= 0) { rt60 = Float.NaN; return; }
+        // A sustained sound (a held note, music) is not a decay: it must have dropped clearly by the end.
+        if (captured[n - 1] > captured[peak] - 15) { rt60 = Float.NaN; return; }
         float dt = (float) ENV_CHUNK / envRate;
         int i5 = -1, i25 = -1, i15 = -1;
         for (int i = peak; i < n; i++) {

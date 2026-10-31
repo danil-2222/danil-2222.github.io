@@ -628,4 +628,67 @@ public class Shots {
         run(2000);
         shot(a, "54_loudness");
     }
+
+    /** A sung note: 196 Hz with harmonics and vibrato, 1.2 s on / 0.6 s off; one continuous stream per AudioRecord. */
+    static final class Voice implements org.robolectric.shadows.ShadowAudioRecord.AudioRecordSource {
+        long n;
+        double phase;
+        @Override public int readInShortArray(short[] buf, int off, int len, boolean blocking) {
+            int rate = 48000;
+            for (int i = 0; i < len; i++, n++) {
+                double t = (double) n / rate;
+                double cyc = t % 1.8;
+                double env = cyc < 1.2 ? Math.min(1, cyc / 0.03) * (1 - 0.3 * cyc) : 0;
+                double f = 196 * (1 + 0.01 * Math.sin(2 * Math.PI * 5 * t));
+                phase += 2 * Math.PI * f / rate;
+                double v = 0;
+                for (int h = 1; h <= 8; h++) v += Math.sin(h * phase) / h;
+                buf[off + i] = (short) (env * v * 6000);
+            }
+            try { Thread.sleep(len * 1000L / rate); } catch (InterruptedException ignored) {}
+            return len;
+        }
+    }
+
+    static void fakeMicrophone() {
+        // Robolectric asks the provider on every read, and activities of earlier tests keep their
+        // engines running: give each AudioRecord its own continuous stream.
+        final java.util.Map<android.media.AudioRecord, Voice> voices =
+                java.util.Collections.synchronizedMap(new java.util.WeakHashMap<android.media.AudioRecord, Voice>());
+        org.robolectric.shadows.ShadowAudioRecord.setSourceProvider(new org.robolectric.shadows.ShadowAudioRecord.AudioRecordSourceProvider() {
+            @Override public org.robolectric.shadows.ShadowAudioRecord.AudioRecordSource get(android.media.AudioRecord r) {
+                Voice v = voices.get(r);
+                if (v == null) { v = new Voice(); voices.put(r, v); }
+                return v;
+            }
+        });
+    }
+
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void liveModesFromMicrophone() throws Exception {
+        fakeMicrophone();
+        MainActivity a = setup();
+        select(a, "spinSource", 0);
+        // The reported scenario: visit a lesson that switches to the generator, come back, pick a live mode.
+        lesson(a, 13);
+        clickText(a, "← До уроків");
+        click(a, "tabMain");
+        Object eng = getField(a, "engine");
+        System.out.println("MIC source after lesson: " + getField(eng, "sourceType") + " running=" + getField(eng, "running"));
+        run(1500);
+        Object lf = getField(a, "lastFrame");
+        float[] tm = (float[]) getField(lf, "time");
+        Class<?> lr = Class.forName("com.example.audiospectrumpro.LessonRenderer");
+        java.lang.reflect.Method yin = lr.getDeclaredMethod("yin", float[].class, int.class);
+        yin.setAccessible(true);
+        double mx = 0; int zc = 0;
+        for (int i = 1; i < tm.length; i++) { mx = Math.max(mx, Math.abs(tm[i])); if (tm[i - 1] < 0 && tm[i] >= 0) zc++; }
+        System.out.println("MIC rate=" + getField(lf, "sampleRate") + " fft=" + getField(lf, "fftSize") + " peak=" + getField(lf, "peakFreqHz")
+                + " yin=" + yin.invoke(null, tm, getField(lf, "sampleRate")) + " max=" + mx + " zeroCross=" + zc + " len=" + tm.length);
+        for (int pos = 7; pos <= 16; pos++) {
+            select(a, "spinMode", pos);
+            run(2200);
+            shot(a, String.format("60_mic_mode_%02d", pos));
+        }
+    }
 }
