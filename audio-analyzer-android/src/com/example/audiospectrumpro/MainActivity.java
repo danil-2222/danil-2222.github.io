@@ -1041,6 +1041,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
             {8, 54, "Живе піаніно (2–6 гравців)", "Кожен — одна нота, разом — пісня"},
+            {8, 55, "Замри! (будь-скільки гравців)", "Музика — танцюємо, тиша — ні звуку"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2142,6 +2143,30 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "зірки для всієї команди.";
     }
 
+    private FreezeGame freezeGame;
+
+    private String lessonFreeze() {
+        ensureLive(0);
+        stopBuffer();
+        if (freezeGame == null) {
+            freezeGame = new FreezeGame(density(), new FreezeGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final FreezeGame g = freezeGame;
+        viz2d.showLesson(g);
+        Button go = dynButton(dyn, "▶ Почати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Покладіть телефон посеред кімнати, гучність — на максимум. Спершу 2 секунди тиші: телефон слухає, "
+                + "наскільки тихо у вас (холодильник, вулиця). Потім грає музика — танцюйте! Музика замовкла — "
+                + "замріть: ні кроку, ні сміху. Будь-який звук гучніший за рожеву «межу тиші» — і телефон крикне "
+                + "«Хтось зашумів!».\n\n"
+                + "Шість раундів. Можна грати командою (скільки раундів утримали тишу) або на вибування: хто "
+                + "зашумів — сідає. Подивіться на шумомір: навіть шепіт помітно підстрибує над лінією.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2469,6 +2494,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 52: text = lessonMusicPause(); break;
             case 53: text = lessonTug(); break;
             case 54: text = lessonPiano(); break;
+            case 55: text = lessonFreeze(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

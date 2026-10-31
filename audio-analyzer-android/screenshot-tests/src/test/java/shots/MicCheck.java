@@ -1248,4 +1248,51 @@ public class MicCheck {
         check("Живе піаніно: хто влучив", ok, sb.toString());
         System.out.println("REPORT10\n" + String.join("\n", report));
     }
+
+    @Test
+    public void freezeGame() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 55);
+        Object g = get(a, "freezeGame");
+        long seed = 3;
+        float[] track = (float[]) staticCall("FreezeGame", "soundtrack", new Class<?>[]{long.class}, seed);
+        float[][] sch = (float[][]) staticCall("FreezeGame", "schedule", new Class<?>[]{long.class}, seed);
+        for (double lat : new double[]{0.15, 0.8}) {
+        float[] x = mix(noise(track.length / (double) RATE + 3, 0.003f), silence(1));
+        for (int i = 0; i < track.length; i++) {          // music from the speaker with a little room echo
+            int at = i + (int) (lat * RATE);
+            x[at] += 0.5f * track[i];
+            if (at + 2400 < x.length) x[at + 2400] += 0.15f * track[i];
+            if (at + 5760 < x.length) x[at + 5760] += 0.07f * track[i];
+        }
+        double t = 2.5;
+        double[] freezeStart = new double[6];
+        for (int r = 0; r < 6; r++) { t += sch[0][r]; freezeStart[r] = t; t += sch[1][r]; }
+        Random rnd = new Random(4);
+        freezeStart = freezeStart.clone();
+        for (int r = 0; r < 6; r++) freezeStart[r] += lat - 0.15;
+        burst(x, (int) ((freezeStart[1] + 2.0) * RATE), 0.2f, 0.05, rnd);                // a clap
+        float[] cough = voice(180, 0.3, 0.05f);
+        for (int i = 0; i < cough.length; i++) x[(int) ((freezeStart[3] + 1.5) * RATE) + i] += cough[i];
+        float[] breath = noise(1.0, 0.002f);                                               // barely audible
+        for (int i = 0; i < breath.length; i++) x[(int) ((freezeStart[4] + 1.0) * RATE) + i] += breath[i];
+        run(300);
+        call(g, "start", new Class<?>[]{long.class}, seed);
+        mic(x, false);
+        run((long) ((freezeStart[1] + 2.3) * 1000));
+        if (lat < 0.5) shot(a, "99_freeze_caught");
+        waitState(g, "RESULT", 90000);
+        shot(a, "99_freeze_result");
+        boolean[] c = (boolean[]) call(g, "caught", new Class<?>[]{});
+        check("Замри: хто зашумів", "RESULT".equals(call(g, "state", new Class<?>[]{})) && !c[0] && c[1] && !c[2] && c[3] && !c[4] && !c[5],
+                String.format("спіймано в раундах: %s (очікувалось: 2 — оплески, 4 — кашель; тихе дихання в 5 — ні); тиша кімнати %.1f дБ",
+                        java.util.Arrays.toString(c), (Float) call(g, "roomDb", new Class<?>[]{})) + String.format(", затримка динаміка %.2f с", lat));
+        }
+        System.out.println("REPORT11\n" + String.join("\n", report));
+    }
 }
