@@ -1047,6 +1047,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 58, "Заспівай ноту (1–8 гравців)", "Хто найточніше повторить ноти — у центах"},
             {8, 59, "Звуковий квіз (команди)", "Інструменти, частоти, акорди — хто краще чує?"},
             {8, 60, "Звукові хованки (2+ телефони)", "Знайди телефон, що пищить, — хто швидше?"},
+            {8, 61, "Шпигуни (2 телефони)", "Шифр Цезаря летить звуком — хто зламає?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2353,6 +2354,48 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "15 кГц дорослі чують погано, а діти — добре: цікаво перевірити!";
     }
 
+    private SpyGame spyGame;
+
+    private String lessonSpy() {
+        ensureLive(0);
+        stopBuffer();
+        if (spyGame == null) {
+            spyGame = new SpyGame(density(), new SpyGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final SpyGame g = spyGame;
+        g.listen();
+        viz2d.showLesson(g);
+        dynSpinner("Хто я", new String[]{"Дешифрувальник (приймаю)", "Шифрувальник (надсилаю)"}, g.sender ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { g.sender = i == 1; viz2d.invalidate(); }
+        });
+        dynSlider("Ключ: %.0f", "spy_key", 31, 2, new Value() {
+            @Override public float of(int p) { return p + 1; }
+        }, new OnPick() {
+            @Override public void pick(int p) { g.setKey(p + 1); }
+        });
+        final EditText word = dynEdit("Таємне слово (до 20 літер)", "");
+        LinearLayout row = dynRow();
+        Button send = dynButton(row, "📡 Надіслати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.send(word.getText().toString()); viz2d.invalidate(); }
+        });
+        send.setTextColor(0xFFFF007F);
+        dynButton(row, "✓ Розгадали!", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.cracked(); viz2d.invalidate(); }
+        });
+        dynButton(dyn, "🎧 Слухати ефір заново", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.listen(); viz2d.invalidate(); }
+        });
+        return "Гра для двох команд з двома телефонами. Шифрувальники пишуть таємне слово, обирають ключ (від 1 до 32) "
+                + "і тиснуть «📡 Надіслати» — телефон «пропищить» ЗАШИФРОВАНЕ слово. Ключ нікому не кажуть!\n\n"
+                + "Дешифрувальники бачать перехоплену абракадабру і крутять повзунок ключа, поки замість неї не з'явиться "
+                + "справжнє слово. Тоді — «✓ Розгадали!»: телефон покаже час і кількість спроб. Міняйтеся ролями.\n\n"
+                + "Це шифр Цезаря: кожна буква зсувається абеткою на кілька місць (зверху — звичайна абетка, знизу — "
+                + "зсунута). Таким шифром користувався Юлій Цезар 2000 років тому. Але ключів лише 32 — тож його можна "
+                + "зламати простим перебором. Сучасні шифри мають більше ключів, ніж атомів у Всесвіті.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2686,6 +2729,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 58: text = lessonSingNote(); break;
             case 59: text = lessonQuiz(); break;
             case 60: text = lessonHideSeek(); break;
+            case 61: text = lessonSpy(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

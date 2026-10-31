@@ -1679,4 +1679,37 @@ public class MicCheck {
         check("Хованки: старт за сигналом і «знайшли»", ok && noFalse, sb + "розмова і свист без маячка: " + (noFalse ? "не знайдено ✓" : "хибне «знайшли» ✗"));
         System.out.println("REPORT16\n" + String.join("\n", report));
     }
+
+    @Test
+    public void spies() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 61);
+        Object g = get(a, "spyGame");
+        String plain = "ЇЖАК ЄНОТ ҐАВА ЩУКА", secretKey = "11";
+        String enc = (String) staticCall("SpyGame", "caesar", new Class<?>[]{String.class, int.class}, plain, 11);
+        String back = (String) staticCall("SpyGame", "caesar", new Class<?>[]{String.class, int.class}, enc, -11);
+        // What the sender phone would play, heard by the receiver from a metre away with some noise.
+        float[] msg = modem("S:" + enc, 0.25f);
+        call(g, "listen", new Class<?>[]{});
+        mic(mix(concat(silence(0.5), msg, silence(1.5)), noise(msg.length / (double) RATE + 2, 0.01f)), false);
+        run(msg.length * 1000L / RATE + 2000);
+        String got = (String) call(g, "cipher", new Class<?>[]{});
+        // The receiver tries keys 1..11.
+        String found = null;
+        for (int key = 1; key <= 32; key++) {
+            call(g, "setKey", new Class<?>[]{int.class}, key);
+            if (plain.equals(call(g, "attempt", new Class<?>[]{}))) { found = String.valueOf(key); break; }
+        }
+        call(g, "cracked", new Class<?>[]{});
+        run(200);
+        shot(a, "99_spy_cracked");
+        check("Шпигуни: шифр, передача звуком і злам", back.equals(plain) && !enc.equals(plain) && enc.equals(got) && secretKey.equals(found),
+                "«" + plain + "» → «" + enc + "», прийнято «" + got + "», ключ знайдено перебором: " + found);
+        System.out.println("REPORT17\n" + String.join("\n", report));
+    }
 }
