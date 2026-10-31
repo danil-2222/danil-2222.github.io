@@ -1712,4 +1712,58 @@ public class MicCheck {
                 "«" + plain + "» → «" + enc + "», прийнято «" + got + "», ключ знайдено перебором: " + found);
         System.out.println("REPORT17\n" + String.join("\n", report));
     }
+
+    @Test
+    public void cowboyDuel() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 62);
+        Object g = get(a, "cowboy");
+        long seed = 12;
+        float[] track = (float[]) staticCall("CowboyDuel", "track", new Class<?>[]{long.class}, seed);
+        float[] waits = (float[]) staticCall("CowboyDuel", "waits", new Class<?>[]{long.class}, seed);
+        // Seen from player 2: player 1's track from a metre away, own carrier, a finger at these reactions.
+        double[] react = {240, 310, 199, 420, 260};
+        double t0 = 0.6;
+        float[] x = new float[(int) ((t0 + track.length / (double) RATE + 12) * RATE)];
+        for (int i = 0; i < track.length; i++) x[(int) (t0 * RATE) + i] += 0.3f * track[i];
+        float[] gain = new float[x.length];
+        java.util.Arrays.fill(gain, 1f);
+        double at = t0;
+        for (int r = 0; r < 5; r++) {
+            at += waits[r];
+            int c0 = (int) ((at + react[r] / 1000) * RATE);
+            for (int i = c0; i < c0 + RATE / 3; i++) gain[i] = 0.1f;
+            at += 2.5;
+        }
+        int falseAt = (int) ((t0 + 1.0) * RATE);                                  // twitchy finger before round 1
+        for (int i = falseAt; i < falseAt + RATE / 5; i++) gain[i] = 0.1f;
+        for (int i = 0; i < x.length; i++) x[i] = (x[i] + 0.12f * (float) Math.sin(2 * Math.PI * 18200 * i / RATE) * gain[i]) * (gain[i] < 1 ? 0.6f : 1f);
+        float[] p1 = modem("P1:220,330,250,300,500", 0.3f);
+        int endAt = (int) ((t0 + track.length / (double) RATE + 0.9) * RATE);
+        for (int i = 0; i < p1.length; i++) x[endAt + i] += p1[i];
+        setField(g, "me", 2);
+        call(g, "start", new Class<?>[]{});
+        mic(x, false);
+        waitState(g, "RESULT", 90000);
+        shot(a, "99_cowboy_result");
+        List<?> mine = (List<?>) call(g, "mine", new Class<?>[]{});
+        List<?> theirs = (List<?>) call(g, "theirs", new Class<?>[]{});
+        int[] wins = (int[]) call(g, "wins", new Class<?>[]{});
+        boolean ok = mine.size() == 5 && theirs.size() == 5;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; ok && i < 5; i++) {
+            float v = (Float) mine.get(i);
+            ok &= Math.abs(v - react[i]) <= 30;
+            sb.append(String.format("%.0f/%.0f ", v, react[i]));
+        }
+        check("Ковбойська дуель (гравець 2)", ok && wins[0] == 3 && wins[1] == 2 && (Integer) call(g, "falseStarts", new Class<?>[]{}) == 1,
+                "моя реакція виміряно/задано: " + sb + "; суперник " + theirs + "; раунди " + wins[0] + ":" + wins[1]
+                        + "; фальстартів " + call(g, "falseStarts", new Class<?>[]{}));
+        System.out.println("REPORT18\n" + String.join("\n", report));
+    }
 }

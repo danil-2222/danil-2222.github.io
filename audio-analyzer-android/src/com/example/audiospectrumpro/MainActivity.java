@@ -1048,6 +1048,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 59, "Звуковий квіз (команди)", "Інструменти, частоти, акорди — хто краще чує?"},
             {8, 60, "Звукові хованки (2+ телефони)", "Знайди телефон, що пищить, — хто швидше?"},
             {8, 61, "Шпигуни (2 телефони)", "Шифр Цезаря летить звуком — хто зламає?"},
+            {8, 62, "Ковбойська дуель (2 телефони)", "ПІФ! — хто швидше закриє мікрофон?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2396,6 +2397,34 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "зламати простим перебором. Сучасні шифри мають більше ключів, ніж атомів у Всесвіті.";
     }
 
+    private CowboyDuel cowboy;
+
+    private String lessonCowboy() {
+        ensureLive(0);
+        stopBuffer();
+        if (cowboy == null) {
+            cowboy = new CowboyDuel(density(), new CowboyDuel.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final CowboyDuel g = cowboy;
+        viz2d.showLesson(g);
+        dynSpinner("Хто я", new String[]{"Гравець 1 (подає сигнал)", "Гравець 2"}, g.me - 1, new OnPick() {
+            @Override public void pick(int i) { g.me = i + 1; viz2d.invalidate(); }
+        });
+        Button go = dynButton(dyn, "▶ Почати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Дуель двох ковбоїв, у кожного свій телефон. Станьте поруч, телефони покладіть перед собою, палець — над "
+                + "мікрофоном (отвір унизу). Гравець 2 тисне «▶ Почати» першим, потім гравець 1.\n\n"
+                + "Телефон гравця 1 цокає «приготуватись», а в несподіваний момент дає сигнал «ПІФ!». Хто швидше закриє "
+                + "свій мікрофон — той виграв раунд. Закрили до сигналу — фальстарт. П'ять раундів.\n\n"
+                + "Кожен телефон міряє реакцію від миті, коли САМ почув сигнал, тож відстань не важить. Наприкінці "
+                + "телефони звуком обмінюються часом — і обидва покажуть рахунок. Звичайна реакція людини — 200–300 мс.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2730,6 +2759,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 59: text = lessonQuiz(); break;
             case 60: text = lessonHideSeek(); break;
             case 61: text = lessonSpy(); break;
+            case 62: text = lessonCowboy(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
