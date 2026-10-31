@@ -27,7 +27,7 @@ final class DuelGame implements LessonView {
     static final int SONG_BEATS = 32;
     static final float PERFECT_MS = 60, GOOD_MS = 150;
 
-    enum Role { SOLO, PLAYER1, PLAYER2 }
+    enum Role { SOLO, PLAYER1, PLAYER2, PLAYER3, PLAYER4, PLAYER5 }
     enum State { IDLE, SENDING_GO, WAIT_GO, PLAYING, EXCHANGE, RESULT }
 
     Role role = Role.SOLO;
@@ -48,6 +48,9 @@ final class DuelGame implements LessonView {
     private String feedback = "";
     private float feedbackUntil;
     private int opponent = -1;
+    /** How many phones play (2..5) and the scores heard from the others, by player number. */
+    int players = 2;
+    private final java.util.TreeMap<Integer, Integer> others = new java.util.TreeMap<>();
     private String sentScore = "";
     private boolean scoreSent;
 
@@ -57,10 +60,14 @@ final class DuelGame implements LessonView {
         decoder = new ModemLesson(dp);
     }
 
-    float carrierHz() {
-        boolean second = role == Role.PLAYER2;
-        return audible ? (second ? 1100 : 800) : (second ? 18200 : 17000);
-    }
+    static final float[] CARRIERS = {17000, 17000, 18200, 16400, 17600, 15800};
+    static final float[] AUDIBLE = {800, 800, 1100, 950, 1250, 650};
+
+    int number() { return role.ordinal(); }
+
+    float carrierHz() { return audible ? AUDIBLE[number()] : CARRIERS[number()]; }
+
+    java.util.Map<Integer, Integer> others() { return others; }
 
     String state() { return state.name(); }
     int score() { return score; }
@@ -126,6 +133,7 @@ final class DuelGame implements LessonView {
         java.util.Arrays.fill(judged, false);
         score = combo = bestCombo = perfect = good = miss = extra = 0;
         opponent = -1;
+        others.clear();
         scoreSent = false;
         feedback = "";
     }
@@ -170,19 +178,31 @@ final class DuelGame implements LessonView {
         }
         if (state == State.EXCHANGE) {
             String msg = decoder.receivedText();
-            String want = role == Role.PLAYER1 ? "P2:" : "P1:";
-            if (msg != null && msg.startsWith(want)) {
-                try { opponent = Integer.parseInt(msg.substring(3).trim()); } catch (NumberFormatException ignored) {}
+            if (msg != null) {
+                decoder.clearReceived();
+                int colon = msg.indexOf(':');
+                if (msg.startsWith("P") && colon > 1) {
+                    try {
+                        int n = Integer.parseInt(msg.substring(1, colon));
+                        if (n != number() && n >= 1 && n <= 5) {
+                            others.put(n, Integer.parseInt(msg.substring(colon + 1).trim()));
+                            opponent = 0;
+                            for (int v : others.values()) opponent = Math.max(opponent, v);
+                        }
+                    } catch (NumberFormatException ignored) { }
+                }
             }
-            // Player 1 answers first, player 2 three seconds later, so the messages never overlap.
-            float sendAt = role == Role.PLAYER1 ? 500 : 3800;
+            // Each player speaks in its own slot, so the messages never overlap.
+            float sendAt = PartyLink.slotMs(number());
             if (!scoreSent && clockMs >= stateUntil + sendAt) {
                 scoreSent = true;
-                sentScore = (role == Role.PLAYER1 ? "P1:" : "P2:") + score;
+                sentScore = "P" + number() + ":" + score;
                 sound.play(ModemLesson.encode(sentScore, RATE), false);
             }
-            if (opponent >= 0 && scoreSent && clockMs >= stateUntil + sendAt + 3000) state = State.RESULT;
-            if (clockMs > stateUntil + 15000) state = State.RESULT;            // give up waiting
+            float allSent = PartyLink.slotMs(Math.max(players, number())) + 2600;
+            boolean everyone = others.size() >= players - 1;
+            if (scoreSent && (everyone || clockMs >= stateUntil + allSent) && clockMs >= stateUntil + sendAt + 2600) state = State.RESULT;
+            if (clockMs > stateUntil + allSent + 4000) state = State.RESULT;              // give up waiting
         }
     }
 
@@ -249,11 +269,11 @@ final class DuelGame implements LessonView {
     public void draw(Canvas c, int w, int h) {
         float dp = k.dp;
         k.label(c, "Ритм-дуель", 8 * dp, 22 * dp, 16, LessonKit.WHITE, Paint.Align.LEFT, true);
-        String who = role == Role.SOLO ? "гра наодинці" : role == Role.PLAYER1 ? "ви — гравець 1" : "ви — гравець 2";
+        String who = role == Role.SOLO ? "гра наодинці" : "ви — гравець " + number() + " з " + players;
         k.label(c, who + " · закривайте мікрофон пальцем у такт", 8 * dp, 40 * dp, 11.5f, LessonKit.SOFT, Paint.Align.LEFT, false);
         switch (state) {
             case IDLE:
-                k.label(c, role == Role.PLAYER2 ? "Натисніть «Почати» і чекайте на друга" : "Натисніть «Почати»", w / 2f, h * 0.45f, 16,
+                k.label(c, role.ordinal() >= 2 ? "Натисніть «Почати» і чекайте на гравця 1" : "Натисніть «Почати»", w / 2f, h * 0.45f, 16,
                         LessonKit.YELLOW, Paint.Align.CENTER, true);
                 return;
             case SENDING_GO:
@@ -264,7 +284,7 @@ final class DuelGame implements LessonView {
                 return;
             case EXCHANGE:
                 k.label(c, "Ваш рахунок: " + score, w / 2f, h * 0.38f, 22, LessonKit.WHITE, Paint.Align.CENTER, true);
-                k.label(c, opponent >= 0 ? "Рахунок друга отримано ✓" : "📡 Обмін рахунками звуком…", w / 2f, h * 0.38f + 30 * dp, 14,
+                k.label(c, "📡 Обмін рахунками звуком… отримано " + others.size() + " з " + (players - 1), w / 2f, h * 0.38f + 30 * dp, 14,
                         LessonKit.CYAN, Paint.Align.CENTER, false);
                 return;
             case RESULT:
@@ -297,10 +317,34 @@ final class DuelGame implements LessonView {
                 LessonKit.WHITE, Paint.Align.CENTER, true);
     }
 
+    /** Several players: everybody's score, best first. */
+    private void drawRanking(Canvas c, int w, int h) {
+        float dp = k.dp;
+        java.util.List<int[]> rows = new java.util.ArrayList<>();
+        rows.add(new int[]{number(), score});
+        for (java.util.Map.Entry<Integer, Integer> e : others.entrySet()) rows.add(new int[]{e.getKey(), e.getValue()});
+        java.util.Collections.sort(rows, new java.util.Comparator<int[]>() {
+            @Override public int compare(int[] a, int[] b) { return Integer.compare(b[1], a[1]); }
+        });
+        String[] medal = {"🥇", "🥈", "🥉"};
+        float y = 64 * dp;
+        for (int i = 0; i < rows.size(); i++) {
+            int[] r = rows.get(i);
+            boolean me = r[0] == number();
+            k.label(c, (i < 3 ? medal[i] : (i + 1) + ".") + "  Гравець " + r[0] + (me ? " (ви)" : ""), 24 * dp, y, 16,
+                    me ? LessonKit.CYAN : i == 0 ? LessonKit.YELLOW : LessonKit.WHITE, Paint.Align.LEFT, me || i == 0);
+            k.label(c, String.valueOf(r[1]), w - 24 * dp, y, 16, LessonKit.WHITE, Paint.Align.RIGHT, true);
+            y += 26 * dp;
+        }
+        if (others.size() < players - 1) k.label(c, "Не всіх почули — підійдіть ближче", w / 2f, y, 11, LessonKit.PINK, Paint.Align.CENTER, false);
+    }
+
     private void drawResult(Canvas c, int w, int h) {
         float dp = k.dp;
         float cx = w / 2f;
-        if (role != Role.SOLO && opponent >= 0) {
+        if (role != Role.SOLO && others.size() >= 2) {
+            drawRanking(c, w, h);
+        } else if (role != Role.SOLO && opponent >= 0) {
             boolean win = score > opponent, draw = score == opponent;
             k.label(c, draw ? "Нічия! 🤝" : win ? "Перемога! 🏆" : "Друг переміг 😅", cx, h * 0.25f, 26,
                     win ? LessonKit.GREEN : draw ? LessonKit.YELLOW : LessonKit.PINK, Paint.Align.CENTER, true);

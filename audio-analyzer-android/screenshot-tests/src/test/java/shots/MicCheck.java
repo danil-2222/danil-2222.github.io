@@ -804,6 +804,26 @@ public class MicCheck {
                 String.format("старт за сигналом ✓, влучань %d з 37, мій рахунок %d, рахунок друга %d, затримка %.0f мс",
                         (Integer) call(g, "perfect", new Class<?>[]{}) + (Integer) get(g, "good"), (Integer) call(g, "score", new Class<?>[]{}),
                         (Integer) call(g, "opponent", new Class<?>[]{}), (Float) get(g, "latencyMs")));
+
+        // Four phones, seen from player 4: three scores arrive in their slots.
+        role.set(g, Enum.valueOf((Class) roleCls, "PLAYER4"));
+        setField(g, "players", 4);
+        mic(silence(1), true);
+        run(300);
+        call(g, "start", new Class<?>[]{});
+        float[] perf4 = carrierPerformance(17600, 180, new int[]{3, 9}, r);
+        float[] s1 = modem("P1:2950", 0.4f), s2 = modem("P2:3400", 0.4f), s3 = modem("P3:1800", 0.4f);
+        mic(concat(silence(0.5), go, silence(0.25), perf4, silence(0.9), s1, silence(3.0 - s1.length / (double) RATE), s2,
+                silence(3.0 - s2.length / (double) RATE), s3, silence(12)), false);
+        until = System.currentTimeMillis() + 70000;
+        while (System.currentTimeMillis() < until && !"RESULT".equals(call(g, "state", new Class<?>[]{}))) run(250);
+        shot(a, "99_duel_four");
+        Map<?, ?> others = (Map<?, ?>) call(g, "others", new Class<?>[]{});
+        int mine = (Integer) call(g, "score", new Class<?>[]{});
+        check("Ритм-дуель на чотирьох (гравець 4)", "RESULT".equals(call(g, "state", new Class<?>[]{})) && others.size() == 3
+                        && Integer.valueOf(3400).equals(others.get(2)) && Integer.valueOf(1800).equals(others.get(3))
+                        && (Integer) call(g, "perfect", new Class<?>[]{}) + (Integer) get(g, "good") == 35,
+                "отримано " + others + ", мій рахунок " + mine + ", влучань " + ((Integer) call(g, "perfect", new Class<?>[]{}) + (Integer) get(g, "good")) + " з 37 (2 пропущено навмисно)");
         System.out.println("REPORT5\n" + String.join("\n", report));
     }
 
