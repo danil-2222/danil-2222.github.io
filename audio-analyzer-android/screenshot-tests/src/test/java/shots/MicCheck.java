@@ -494,4 +494,51 @@ public class MicCheck {
                 "MIDI " + lo + "–" + hi + ", тип " + (type >= 0 ? new String[]{"бас", "баритон", "тенор", "альт", "меццо", "сопрано"}[type] : "—"));
         System.out.println("REPORT2\n" + String.join("\n", report));
     }
+
+    @Test
+    public void simpleLessonsAndParrot() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        click(a, "tabLearn");
+        run(300);
+        shot(a, "94_academy_simple");
+
+        Object[][] plan = {
+                {32, tone(1800, 3, 0.3f)}, {33, voice(130, 3, 0.25f)}, {34, tone(1200, 3, 0.3f)},
+                {35, voice(110, 3, 0.3f)}, {36, voice(140, 3, 0.25f)}, {37, voice(150, 3, 0.25f)},
+                {38, voice(329.6, 3, 0.25f)}, {39, voice(200, 3, 0.25f)}};
+        for (Object[] p : plan) {
+            int id = (Integer) p[0];
+            mic((float[]) p[1], true);
+            lesson(a, id);
+            run(2500);
+            shot(a, "95_simple_" + id);
+            check("Простий урок " + id, "MIC".equals(sourceOf(a)) && peakHz(a) > 0, "джерело " + sourceOf(a) + ", пік " + peakHz(a));
+            back(a);
+        }
+        // Face with noise (should frown) and the threads with a low hum.
+        mic(noise(3, 0.2f), true);
+        lesson(a, 34); run(2000); shot(a, "96_face_noise"); back(a);
+        mic(voice(90, 3, 0.3f), true);
+        lesson(a, 32); run(2500); shot(a, "96_threads_low"); back(a);
+
+        // Parrot: one phrase, then silence.
+        mic(silence(1), true);
+        run(500);
+        lesson(a, 40);
+        mic(concat(silence(1), voice(170, 1.2, 0.3f), silence(4)), false);
+        run(5000);
+        shot(a, "97_parrot");
+        Object pl = get(a, "parrotLesson");
+        Class<?> sg = Class.forName("com.example.audiospectrumpro.SignalGenerator");
+        Field bf = sg.getDeclaredField("buffer"); bf.setAccessible(true);
+        int phrases = (Integer) call(pl, "phrases", new Class<?>[]{});
+        float[] said = (float[]) bf.get(null);
+        check("Папуга повторює фразу", phrases == 1 && said.length > RATE / 2,
+                "повторено фраз: " + phrases + ", довжина відповіді " + String.format("%.2f с", said.length / (float) RATE));
+        System.out.println("REPORT3\n" + String.join("\n", report));
+    }
 }

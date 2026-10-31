@@ -103,5 +103,13 @@ final class LessonKit {
         for (int i = 0; i < x.length; i++) x[i] *= g;
     }
 
+    /** Total power (re full scale, uncalibrated) of a frame's spectrum between lo and hi Hz. */
+    static double bandPower(AudioEngine.Frame f, float lo, float hi) {
+        int i0 = Math.max(1, (int) (lo / f.binHz)), i1 = Math.min(f.spectrumDb.length - 1, (int) (hi / f.binHz));
+        double p = 0;
+        for (int i = i0; i <= i1; i++) p += Math.pow(10, (f.spectrumDb[i] - f.calibrationDb) / 10.0);
+        return p / Math.max(1f, f.enbw);
+    }
+
     static float midiToHz(float midi) { return (float) (440 * Math.pow(2, (midi - 69) / 12.0)); }
 }
