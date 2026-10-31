@@ -311,6 +311,14 @@ public class VisualizerView extends View {
         return true;
     }
 
+    /** True while a lesson listens: it must see every frame, even those the screen skips. */
+    public boolean lessonActive() { return mode == Mode.LESSON && lessonView != null; }
+
+    /** Gives a frame the screen will not draw to the lesson (keeps its sample clock gapless). */
+    public void feedLesson(AudioEngine.Frame f) {
+        if (mode == Mode.LESSON && lessonView != null) lessonView.onFrame(f);
+    }
+
     public void setFrame(AudioEngine.Frame f) {
         frame = f;
         if (f.sampleRate != lastSampleRate) {

@@ -101,10 +101,20 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     private File recordingFile;
     private AudioEngine.Frame lastFrame;
     private final AtomicReference<AudioEngine.Frame> pending = new AtomicReference<>();
+    /** Frames the screen skipped while busy; lessons still get every one of them, in order. */
+    private final java.util.concurrent.ConcurrentLinkedQueue<AudioEngine.Frame> skipped = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private volatile boolean lessonListening;
+    private long lastFedIndex = -1;
     private final Runnable deliver = new Runnable() {
         @Override public void run() {
             AudioEngine.Frame f = pending.getAndSet(null);
-            if (f != null) showFrame(f);
+            lessonListening = mode != MODE_3D && viz2d.lessonActive();
+            AudioEngine.Frame s;
+            while ((s = skipped.poll()) != null) {
+                // A frame that arrives after a newer one was already shown is dropped (its sound is in the next window).
+                if (s.index > lastFedIndex && (f == null || s.index < f.index)) { viz2d.feedLesson(s); lastFedIndex = s.index; }
+            }
+            if (f != null) { showFrame(f); lastFedIndex = Math.max(lastFedIndex, f.index); }
         }
     };
 
@@ -685,7 +695,12 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
 
     @Override
     public void onFrame(AudioEngine.Frame frame) {
-        if (pending.getAndSet(frame) == null) runOnUiThread(deliver);
+        AudioEngine.Frame previous = pending.getAndSet(frame);
+        if (previous == null) {
+            runOnUiThread(deliver);
+        } else if (lessonListening && skipped.size() < 500) {
+            skipped.add(previous);                    // the screen was busy: keep it for the lesson
+        }
     }
 
     @Override
