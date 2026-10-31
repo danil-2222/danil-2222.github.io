@@ -1357,4 +1357,74 @@ public class MicCheck {
                 sb + "(очікувалось ~100 / 60 / 35%)");
         System.out.println("REPORT12\n" + String.join("\n", report));
     }
+
+    static float[] whistle(double hz, double sec, float amp) {
+        float[] x = new float[(int) (sec * RATE)];
+        double ph = 0;
+        Random r = new Random(5);
+        for (int i = 0; i < x.length; i++) {
+            ph += 2 * Math.PI * hz * (1 + 0.01 * Math.sin(2 * Math.PI * 6 * i / RATE)) / RATE;
+            x[i] = (float) (amp * Math.sin(ph) + 0.01 * amp * (r.nextFloat() * 2 - 1));     // a little breath noise
+        }
+        return x;
+    }
+
+    @Test
+    public void hotPotato() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 57);
+        Object g = get(a, "potatoGame");
+        String[] names = {"свист", "писк", "«у»", "«ш»", "видих"};
+        float[][] sounds = {whistle(1800, 1.5, 0.2f), voice(560, 1.5, 0.2f), hum(140, 1.5, 0.08), hiss(1.5, 0.05), blowNoise(1.5, 0.2f)};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (int s2 = 0; s2 < 5; s2++) {
+            sb.append(names[s2]).append(" → ");
+            for (int t = 0; t < 5; t++) {
+                mic(silence(1), true);
+                run(250);
+                call(g, "setTask", new Class<?>[]{int.class}, t);
+                mic(concat(sounds[s2], silence(1)), false);
+                run(1700);
+                boolean done = (Boolean) call(g, "done", new Class<?>[]{});
+                if (done) sb.append(names[t]).append(' ');
+                ok &= done == (s2 == t);
+            }
+            sb.append("; ");
+        }
+        // Ticks of the fuse alone must not complete any task.
+        float[] ticks = (float[]) staticCall("HotPotatoGame", "fuse", new Class<?>[]{float.class}, 6f);
+        float[] tickPart = java.util.Arrays.copyOfRange(ticks, 4 * RATE, 6 * RATE);
+        boolean tickFalse = false;
+        for (int t = 0; t < 5; t++) {
+            mic(silence(1), true);
+            run(250);
+            call(g, "setTask", new Class<?>[]{int.class}, t);
+            mic(concat(tickPart, silence(0.5)), false);
+            run(2300);
+            tickFalse |= (Boolean) call(g, "done", new Class<?>[]{});
+        }
+        check("Гаряча картопля: розпізнавання завдань", ok && !tickFalse, sb + "цокання зараховано: " + tickFalse);
+
+        // A real round: fuse of 6 s, one pass by humming, then the bang.
+        mic(silence(1), true);
+        run(250);
+        call(g, "start", new Class<?>[]{float.class, int.class}, 6f, 2);
+        float[] roundMic = mix(concat(silence(4.0), hum(150, 1.0, 0.08), silence(8)), new float[0]);
+        float[] fuse6 = (float[]) staticCall("HotPotatoGame", "fuse", new Class<?>[]{float.class}, 6f);
+        for (int i = 0; i < fuse6.length && i < roundMic.length; i++) roundMic[i] += 0.3f * fuse6[i];   // the phone's own ticking
+        mic(roundMic, false);
+        run(5200);
+        shot(a, "99_potato_pass");
+        waitState(g, "BOOM", 15000);
+        shot(a, "99_potato_boom");
+        check("Гаряча картопля: раунд", "BOOM".equals(call(g, "state", new Class<?>[]{})) && (Integer) call(g, "passes", new Class<?>[]{}) == 1,
+                "вибух ✓, передач " + call(g, "passes", new Class<?>[]{}));
+        System.out.println("REPORT13\n" + String.join("\n", report));
+    }
 }

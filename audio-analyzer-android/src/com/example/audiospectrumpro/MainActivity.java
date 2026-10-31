@@ -1043,6 +1043,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 54, "Живе піаніно (2–6 гравців)", "Кожен — одна нота, разом — пісня"},
             {8, 55, "Замри! (будь-скільки гравців)", "Музика — танцюємо, тиша — ні звуку"},
             {8, 56, "Зіпсований телефон (3+ гравців)", "Мелодія з вуха у вухо — що з неї лишиться?"},
+            {8, 57, "Гаряча картопля (3+ гравців)", "Свисни, загуди чи подми — і швидше передай!"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2204,6 +2205,31 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "важливо, щоб мелодія йшла вгору й униз так само.";
     }
 
+    private HotPotatoGame potatoGame;
+
+    private String lessonPotato() {
+        ensureLive(0);
+        stopBuffer();
+        if (potatoGame == null) {
+            potatoGame = new HotPotatoGame(density(), new HotPotatoGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final HotPotatoGame g = potatoGame;
+        viz2d.showLesson(g);
+        Button go = dynButton(dyn, "▶ Старт", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Сядьте в коло. Телефон — це гаряча картопля: він цокає все швидше і в таємну мить вибухне (від 20 до "
+                + "45 секунд). Передати його далі можна, лише виконавши звукове завдання на екрані: свиснути, "
+                + "пискнути тоненько, загудіти «у-у-у», зашипіти «ш-ш-ш» або подмухати. Смужка внизу показує, скільки "
+                + "ще тримати звук (пів секунди).\n\n"
+                + "Телефон справді розрізняє ці звуки: свист — це одна чиста частота, писк — голос з високою нотою, "
+                + "«у» — низький голос, «ш» — шум на високих частотах, видих — шум на низьких. У кого телефон у мить "
+                + "«БАБАХ» — вибуває. Грайте, поки не залишиться один переможець!";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2533,6 +2559,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 54: text = lessonPiano(); break;
             case 55: text = lessonFreeze(); break;
             case 56: text = lessonChain(); break;
+            case 57: text = lessonPotato(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
