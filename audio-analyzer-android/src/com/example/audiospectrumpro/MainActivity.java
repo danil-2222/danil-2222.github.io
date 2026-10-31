@@ -1035,6 +1035,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 14, "Звуковий модем", "Передайте текст звуком між телефонами"},
             {5, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
+            {6, 71, "Голосовий тир", "Приціл рухається висотою голосу — влучте в мішені"},
             {6, 49, "Ритм-дуель (1–5 телефонів)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
@@ -2724,6 +2725,28 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "підлоги й стелі, отримаємо α — яку частку звуку «ковтає» кожен квадратний метр. Порівняйте до 4 кімнат.";
     }
 
+    private VoiceShooterGame shooter;
+
+    private String lessonShooter() {
+        ensureLive(0);
+        stopBuffer();
+        if (shooter == null) shooter = new VoiceShooterGame(density());
+        final VoiceShooterGame g = shooter;
+        viz2d.showLesson(g);
+        dynSpinner("Голос", new String[]{"Низький (чоловічий)", "Високий (жіночий, дитячий)"}, g.range, new OnPick() {
+            @Override public void pick(int i) { g.range = i; viz2d.invalidate(); }
+        });
+        Button go = dynButton(dyn, "▶ Старт", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Ваш голос — це приціл: що вище тягнете «а-а-а», то вище він піднімається. Мішені летять справа "
+                + "наліво на різній висоті. Наведіть приціл на мішень і потримайте ноту — зелене кільце заповниться, "
+                + "і — 💥! Дванадцять мішеней, по 4 секунди на кожну.\n\n"
+                + "Це справжній тренажер співу: ви вчитесь чути, яку ноту треба взяти, і точно в неї потрапляти. "
+                + "Якщо голос «не влазить» на екран, оберіть інший діапазон (низький чи високий).";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -3067,6 +3090,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 68: text = lessonDistanceLaw(); break;
             case 69: text = lessonInsulation(); break;
             case 70: text = lessonAbsorption(); break;
+            case 71: text = lessonShooter(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

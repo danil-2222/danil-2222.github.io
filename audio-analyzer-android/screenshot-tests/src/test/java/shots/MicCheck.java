@@ -2149,4 +2149,43 @@ public class MicCheck {
         check("Як кімнати «ковтають» звук", ok, sb.toString());
         System.out.println("REPORT26\n" + String.join("\n", report));
     }
+
+    @Test
+    public void voiceShooter() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 71);
+        Object g = get(a, "shooter");
+        setField(g, "range", 1);
+        float[] tg = (float[]) staticCall("VoiceShooterGame", "targets", new Class<?>[]{long.class, float.class, float.class}, 4L, 55f, 79f);
+        float[] x = new float[(int) ((2 + 12 * 4 + 2) * RATE)];
+        int expected = 0;
+        for (int i = 0; i < 12; i++) {
+            double m = tg[i];
+            if (i == 3 || i == 7) m += 1.2;                 // off by more than a semitone: a miss
+            if (i == 10) continue;                          // silent: a miss
+            if (i == 5) m -= 12;                            // an octave lower still counts
+            if (i != 3 && i != 7) expected++;
+            float[] v = voice(440 * Math.pow(2, (m - 69) / 12), 1.3, 0.3f);
+            int at = (int) ((2 + i * 4 + 0.8) * RATE);
+            for (int k2 = 0; k2 < v.length; k2++) x[at + k2] += v[k2];
+        }
+        mic(silence(1), true);
+        run(300);
+        call(g, "start", new Class<?>[]{long.class}, 4L);
+        mic(x, false);
+        run((long) ((2 + 4 * 4 + 1.3) * 1000));
+        shot(a, "99_shooter");
+        waitState(g, "OVER", 60000);
+        boolean[] hits = (boolean[]) call(g, "hits", new Class<?>[]{});
+        int score = (Integer) call(g, "score", new Class<?>[]{});
+        check("Голосовий тир", score == expected && !hits[3] && !hits[7] && !hits[10] && hits[5],
+                String.format("влучань %d (очікувалось %d): мимо — мішені 4 і 8 (не та нота) та 11 (тиша), мішень 6 — октавою нижче ✓; %s",
+                        score, expected, java.util.Arrays.toString(hits)));
+        System.out.println("REPORT27\n" + String.join("\n", report));
+    }
 }
