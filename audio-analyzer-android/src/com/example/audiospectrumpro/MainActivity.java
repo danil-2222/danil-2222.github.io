@@ -1042,6 +1042,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
             {8, 54, "Живе піаніно (2–6 гравців)", "Кожен — одна нота, разом — пісня"},
             {8, 55, "Замри! (будь-скільки гравців)", "Музика — танцюємо, тиша — ні звуку"},
+            {8, 56, "Зіпсований телефон (3+ гравців)", "Мелодія з вуха у вухо — що з неї лишиться?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2167,6 +2168,42 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "зашумів — сідає. Подивіться на шумомір: навіть шепіт помітно підстрибує над лінією.";
     }
 
+    private ChainGame chainGame;
+
+    private String lessonChain() {
+        ensureLive(0);
+        stopBuffer();
+        if (chainGame == null) {
+            chainGame = new ChainGame(density(), new ChainGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final ChainGame g = chainGame;
+        viz2d.showLesson(g);
+        LinearLayout row = dynRow();
+        dynButton(row, "👂 Послухати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.listen(); }
+        });
+        Button rec = dynButton(row, "🎤 Заспівати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.record(); viz2d.invalidate(); }
+        });
+        rec.setTextColor(0xFFFF007F);
+        LinearLayout row2 = dynRow();
+        dynButton(row2, "🏁 Результат", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.finish(); viz2d.invalidate(); }
+        });
+        dynButton(row2, "🔁 Нова мелодія", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.newMelody(System.nanoTime()); viz2d.invalidate(); }
+        });
+        return "Як у «зіпсований телефон», тільки з мелодією. Гравець 1 тихенько слухає мелодію біля вуха (👂), "
+                + "щоб інші не чули, і співає її в телефон (🎤) — на «ла-ла-ла». Передає телефон гравцю 2: той слухає "
+                + "ЛИШЕ запис гравця 1 і співає, що почув. І так по колу.\n\n"
+                + "Телефон записує ноти кожного, але ховає їх до кінця. Натисніть 🏁 — побачите всі версії поруч і "
+                + "відсоток схожості з оригіналом, а телефон зіграє оригінал і останню версію.\n\n"
+                + "Схожість рахується за «стрибками» між нотами, тож не страшно, якщо хтось співає нижче чи вище — "
+                + "важливо, щоб мелодія йшла вгору й униз так само.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2495,6 +2532,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 53: text = lessonTug(); break;
             case 54: text = lessonPiano(); break;
             case 55: text = lessonFreeze(); break;
+            case 56: text = lessonChain(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

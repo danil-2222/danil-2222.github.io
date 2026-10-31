@@ -1295,4 +1295,66 @@ public class MicCheck {
         }
         System.out.println("REPORT11\n" + String.join("\n", report));
     }
+
+    static float[] sing(List<Float> midi, double noteS, double shift) {
+        List<float[]> parts = new ArrayList<>();
+        parts.add(silence(0.4));
+        for (float m : midi) {
+            parts.add(voice(440 * Math.pow(2, (m + shift - 69) / 12.0), noteS - 0.04, 0.3f));
+            parts.add(silence(0.04));
+        }
+        parts.add(silence(2.0));
+        return concat(parts.toArray(new float[0][]));
+    }
+
+    @Test
+    public void chainGame() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 56);
+        Object g = get(a, "chainGame");
+        call(g, "newMelody", new Class<?>[]{long.class}, 9L);
+        List<List<Float>> versions = (List<List<Float>>) get(g, "versions");
+        List<Float> orig = new ArrayList<>(versions.get(0));
+        List<Float> v2 = new ArrayList<>(orig);
+        v2.set(2, v2.get(2) + 2);                       // player 2 gets the middle note wrong
+        List<Float> v3 = new ArrayList<>(v2);
+        v3.set(4, v3.get(4) - 3);                       // player 3 also changes the ending
+        Object[][] singers = {{orig, -5.0, 0.5}, {v2, 0.0, 0.6}, {v3, 7.0, 0.45}};
+        for (Object[] sg : singers) {
+            call(g, "record", new Class<?>[]{});
+            mic(concat(silence(0.5), sing((List<Float>) sg[0], (Double) sg[2], (Double) sg[1])), false);
+            long until = System.currentTimeMillis() + 30000;
+            int before = versions.size();
+            while (System.currentTimeMillis() < until && versions.size() == before) run(250);
+            mic(silence(1), true);
+            run(300);
+        }
+        shot(a, "99_chain_hidden");
+        call(g, "finish", new Class<?>[]{});
+        run(300);
+        shot(a, "99_chain_result");
+        StringBuilder sb = new StringBuilder();
+        boolean ok = versions.size() == 4;
+        List<Float>[] want = new List[]{orig, v2, v3};
+        double[] shifts = {-5, 0, 7};
+        for (int v = 1; v < versions.size(); v++) {
+            List<Float> got = versions.get(v);
+            boolean notesOk = got.size() == 5;
+            for (int i = 0; notesOk && i < 5; i++) notesOk = Math.abs(got.get(i) - (want[v - 1].get(i) + shifts[v - 1])) < 0.35;
+            ok &= notesOk;
+            sb.append(String.format("гравець %d: %d нот %s, схожість %.0f%%; ", v, got.size(), notesOk ? "✓" : "✗",
+                    (Float) call(g, "similarity", new Class<?>[]{int.class}, v) * 100));
+        }
+        float s1 = (Float) call(g, "similarity", new Class<?>[]{int.class}, 1);
+        float s2 = (Float) call(g, "similarity", new Class<?>[]{int.class}, 2);
+        float s3 = (Float) call(g, "similarity", new Class<?>[]{int.class}, 3);
+        check("Зіпсований телефон: ноти і схожість", ok && s1 > 0.95 && Math.abs(s2 - 0.6) < 0.08 && Math.abs(s3 - 0.35) < 0.08,
+                sb + "(очікувалось ~100 / 60 / 35%)");
+        System.out.println("REPORT12\n" + String.join("\n", report));
+    }
 }
