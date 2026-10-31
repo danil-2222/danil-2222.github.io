@@ -38,6 +38,12 @@ final class TemperatureExperiment implements LessonView {
 
     Role role = Role.LEADER;
     float distance = 1f;
+    /** Ruler mode: the temperature is known, the distance is measured. */
+    boolean ruler;
+    float tempC = 20;
+    private boolean calibrateNext;
+    private double calibD = Double.NaN, lastDistance = Double.NaN;
+    private float calibDist;
 
     private final LessonKit k;
     private final Sound sound;
@@ -130,6 +136,20 @@ final class TemperatureExperiment implements LessonView {
         deadline = clockMs + 3000;
         status = "📢 Пік!";
         sound.play(chirpSound(), false);
+    }
+
+    /** Ruler: calibrate at the distance set on the slider (the next measurement). */
+    void calibrate() {
+        calibrateNext = true;
+        measure();
+    }
+
+    double lastDistance() { return lastDistance; }
+
+    /** Distance from the time difference D at the known temperature. */
+    double rulerDistance(double d) {
+        double c = 331.3 + 0.606 * tempC;
+        return Double.isNaN(calibD) ? c * d / 2 + SELF_M : calibDist + c * (d - calibD) / 2;
     }
 
     void clearResults() {
@@ -339,8 +359,20 @@ final class TemperatureExperiment implements LessonView {
                         fail(String.format(Locale.US, "Дивний результат (%.2f мс) — повторіть.", d * 1000));
                         break;
                     }
-                    results.add(new Measurement(distance, d));
                     state = State.IDLE;
+                    if (ruler) {
+                        if (calibrateNext) {
+                            calibD = d;
+                            calibDist = distance;
+                            calibrateNext = false;
+                            status = "✓ Калібровано на " + fmtM(distance) + ". Тепер розставляйте телефони як завгодно";
+                        } else {
+                            lastDistance = rulerDistance(d);
+                            status = String.format(Locale.US, "📏 Відстань: %.2f м", lastDistance);
+                        }
+                        break;
+                    }
+                    results.add(new Measurement(distance, d));
                     status = String.format(Locale.US, "✓ %s: різниця часу %.3f мс",
                             fmtM(distance), d * 1000);
                 } else if (clockMs > deadline) {
@@ -390,7 +422,8 @@ final class TemperatureExperiment implements LessonView {
     @Override
     public void draw(Canvas c, int w, int h) {
         float dp = k.dp;
-        k.label(c, "🌡 Температура повітря за швидкістю звуку", 8 * dp, 22 * dp, 15, LessonKit.WHITE, Paint.Align.LEFT, true);
+        k.label(c, ruler ? "📏 Рулетка зі звуку" : "🌡 Температура повітря за швидкістю звуку", 8 * dp, 22 * dp, 15, LessonKit.WHITE,
+                Paint.Align.LEFT, true);
         k.label(c, role == Role.LEADER ? "цей телефон — A (ведучий)" : "цей телефон — B (відповідач)", 8 * dp, 40 * dp, 11.5f,
                 LessonKit.SOFT, Paint.Align.LEFT, false);
 
@@ -402,7 +435,8 @@ final class TemperatureExperiment implements LessonView {
         k.line(c, bx - 16 * dp, y + 6 * dp, ax + 16 * dp, y + 6 * dp, LessonKit.YELLOW, 2);
         k.label(c, "пік A →", (ax + bx) / 2, y - 12 * dp, 10, LessonKit.CYAN, Paint.Align.CENTER, false);
         k.label(c, "← пік B", (ax + bx) / 2, y + 22 * dp, 10, LessonKit.YELLOW, Paint.Align.CENTER, false);
-        k.label(c, "d = " + fmtM(distance), (ax + bx) / 2, y + 40 * dp, 12, LessonKit.WHITE, Paint.Align.CENTER, true);
+        k.label(c, ruler ? (Double.isNaN(lastDistance) ? "d = ?" : String.format(Locale.US, "d = %.2f м", lastDistance)) : "d = " + fmtM(distance),
+                (ax + bx) / 2, y + 40 * dp, 12, LessonKit.WHITE, Paint.Align.CENTER, true);
 
         int sc = status.startsWith("✗") ? LessonKit.PINK : LessonKit.CYAN;
         k.text.setTextSize(12 * dp);
@@ -417,6 +451,7 @@ final class TemperatureExperiment implements LessonView {
         if (!s2.isEmpty()) k.label(c, s2, 8 * dp, 152 * dp, 12, sc, Paint.Align.LEFT, true);
 
         double cs = speed();
+        if (ruler && role == Role.LEADER) { drawRuler(c, w, h); return; }
         drawThermometer(c, w - 46 * dp, 60 * dp, h - 20 * dp, cs);
 
         float top = 166 * dp, right = w - 96 * dp;
@@ -446,6 +481,17 @@ final class TemperatureExperiment implements LessonView {
                             : "орієнтовно (одна відстань) — зробіть вимір ще на іншій відстані",
                     box.left + 12 * dp, box.top + 66 * dp, 10.5f, precise ? LessonKit.LABEL : LessonKit.YELLOW, Paint.Align.LEFT, false);
         }
+    }
+
+    private void drawRuler(Canvas c, int w, int h) {
+        float dp = k.dp;
+        float cx = w / 2f, y = h * 0.42f;
+        k.label(c, Double.isNaN(lastDistance) ? "—" : String.format(Locale.US, "%.2f м", lastDistance), cx, y, 48, LessonKit.GREEN,
+                Paint.Align.CENTER, true);
+        k.label(c, String.format(Locale.US, "швидкість звуку при %.0f °C: %.1f м/с", tempC, 331.3 + 0.606 * tempC), cx, y + 30 * dp, 12,
+                LessonKit.SOFT, Paint.Align.CENTER, false);
+        k.label(c, Double.isNaN(calibD) ? "без калібрування: ±10 см" : "відкалібровано на " + fmtM(calibDist) + ": ±2–3 см", cx, y + 50 * dp, 12,
+                Double.isNaN(calibD) ? LessonKit.YELLOW : LessonKit.LABEL, Paint.Align.CENTER, false);
     }
 
     private void drawPhone(Canvas c, float x, float y, String name, boolean me) {

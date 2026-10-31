@@ -1040,6 +1040,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
             {7, 65, "Ефект Доплера (2 телефони)", "Сирена на шнурку: з висоти тону — швидкість"},
             {7, 66, "Швидкість звуку з трубки", "Подуйте над трубкою — її нота розкаже про повітря"},
+            {7, 67, "Рулетка зі звуку (2 телефони)", "Відстань між телефонами — з точністю до сантиметрів"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2567,6 +2568,48 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Найточніше виходить з довгими вузькими трубками.";
     }
 
+    private TemperatureExperiment rulerExp;
+
+    private String lessonRuler() {
+        ensureLive(0);
+        stopBuffer();
+        if (rulerExp == null) {
+            rulerExp = new TemperatureExperiment(density(), new TemperatureExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+            rulerExp.ruler = true;
+        }
+        final TemperatureExperiment t = rulerExp;
+        viz2d.showLesson(t);
+        dynSpinner("Роль цього телефона", new String[]{"A — вимірює", "B — відповідач"}, t.role.ordinal(), new OnPick() {
+            @Override public void pick(int i) { t.setRole(TemperatureExperiment.Role.values()[i]); viz2d.invalidate(); }
+        });
+        dynSlider("Температура повітря: %.0f °C", "ruler_temp", 50, 30, new Value() {
+            @Override public float of(int p) { return p - 10; }
+        }, new OnPick() {
+            @Override public void pick(int p) { t.tempC = p - 10; }
+        });
+        dynSlider("Відстань для калібрування: %.2f м", "ruler_cal", 36, 6, new Value() {
+            @Override public float of(int p) { return 0.2f + 0.05f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { t.distance = 0.2f + 0.05f * p; }
+        });
+        LinearLayout row = dynRow();
+        dynButton(row, "🎯 Калібрувати", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.calibrate(); viz2d.invalidate(); }
+        });
+        Button go = dynButton(row, "📏 Виміряти", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.measure(); viz2d.invalidate(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Той самий спосіб, що в «Термометрі», тільки навпаки: температуру ми знаємо (поставте повзунок), а "
+                + "шукаємо відстань. Телефон A пікає, B відповідає, обидва міряють час своїми мікрофонами — і "
+                + "з різниці часу та швидкості звуку виходить відстань.\n\n"
+                + "Для точності до кількох сантиметрів спершу відкалібруйтесь: покладіть телефони на відому відстань "
+                + "(рулеткою, наприклад 0,5 м), виставте її повзунком і натисніть «🎯 Калібрувати». Потім розносьте телефони "
+                + "як завгодно і тисніть «📏 Виміряти». Так працюють ехолоти, датчики паркування і навіть GPS (там — радіохвилі).";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2906,6 +2949,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 64: text = lessonEchoSpeed(); break;
             case 65: text = lessonDoppler(); break;
             case 66: text = lessonTube(); break;
+            case 67: text = lessonRuler(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

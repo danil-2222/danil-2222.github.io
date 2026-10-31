@@ -1958,4 +1958,55 @@ public class MicCheck {
         check("Швидкість звуку з трубки", ok, sb.toString());
         System.out.println("REPORT22\n" + String.join("\n", report));
     }
+
+    /** Phone A's microphone during one two-way measurement at distance dd. */
+    static float[] twoWay(double dd, double c, double self, Random r) throws Exception {
+        double ea = 0.3, eb = ea + 0.43 + r.nextDouble() * 0.05;
+        double tOwn = ea + self / c, tOther = eb + dd / c;
+        long deltaB = Math.round((eb + self / c - (ea + dd / c)) * 1e6);
+        float[] msg = modem("B:" + deltaB, 0.4f);
+        float[] sig = mix(noise(7, 0.004f), concat(silence(tOther + 0.6), msg, silence(1)));
+        chirpAt(sig, tOwn, 0.8f);
+        chirpAt(sig, tOwn + 0.003, 0.3f);
+        chirpAt(sig, tOther, (float) (0.3 / dd));
+        chirpAt(sig, tOther + 0.005, (float) (0.12 / dd));
+        return sig;
+    }
+
+    @Test
+    public void soundRuler() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 67);
+        Object t = get(a, "rulerExp");
+        setField(t, "tempC", 20f);
+        double c = 331.3 + 0.606 * 20, self = 0.135;
+        Random r = new Random(9);
+        // Calibration at 0.5 m, then two unknown distances.
+        setField(t, "distance", 0.5f);
+        double[] steps = {0.5, 1.37, 2.84};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (int i = 0; i < steps.length; i++) {
+            mic(silence(1), true);
+            run(300);
+            call(t, i == 0 ? "calibrate" : "measure", new Class<?>[]{});
+            mic(twoWay(steps[i], c, self, r), false);
+            long until = System.currentTimeMillis() + 20000;
+            while (System.currentTimeMillis() < until && !"IDLE".equals(call(t, "state", new Class<?>[]{}))) run(200);
+            if (i > 0) {
+                double got = (Double) call(t, "lastDistance", new Class<?>[]{});
+                boolean good = Math.abs(got - steps[i]) < 0.02;
+                ok &= good;
+                sb.append(String.format("%.2f м → виміряно %.3f м %s; ", steps[i], got, good ? "✓" : "✗"));
+            }
+        }
+        shot(a, "99_ruler");
+        check("Рулетка зі звуку", ok, sb + "(калібрування на 0,50 м)");
+        System.out.println("REPORT23\n" + String.join("\n", report));
+    }
 }
