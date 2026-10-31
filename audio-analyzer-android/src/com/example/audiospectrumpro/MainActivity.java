@@ -1039,6 +1039,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
+            {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2074,6 +2075,32 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Немає друзів поруч? Оберіть «Тренування» — телефон сам грає музику і сам міряє реакцію.";
     }
 
+    private TugGame tugGame;
+
+    private String lessonTug() {
+        ensureLive(0);
+        stopBuffer();
+        if (tugGame == null) tugGame = new TugGame(density());
+        final TugGame g = tugGame;
+        g.newMatch();
+        viz2d.showLesson(g);
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "▶ Раунд", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "Новий матч", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.newMatch(); }
+        });
+        return "Покладіть телефон посередині між двома командами (по 1–5 людей). Команда «Гул» 🐻 тягне довгим низьким "
+                + "«у-у-у», команда «Шум» 🐍 — шипінням «ш-ш-ш». Хто сильніший — той тягне канат до себе. Раунд — до "
+                + "лінії або 30 секунд, матч — до двох перемог.\n\n"
+                + "Чому саме так: «у» — це низькі частоти (до ~900 Гц), «ш» — високі (2,5–12 кГц). Телефон порівнює "
+                + "енергію у двох смугах, тож гра працює для будь-яких голосів — і дитячих, і дорослих. Подивіться на "
+                + "спектр у вкладці «Вигляд» — побачите дві різні «гори».\n\n"
+                + "Порада: не кричіть у телефон з упору — сидіть на однаковій відстані, і хай переможе командна гра!";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2399,6 +2426,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 50: text = lessonTemperature(); break;
             case 51: text = lessonWind(); break;
             case 52: text = lessonMusicPause(); break;
+            case 53: text = lessonTug(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

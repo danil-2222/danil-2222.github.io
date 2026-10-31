@@ -1111,4 +1111,80 @@ public class MicCheck {
                 "раундів " + rs.size() + ": " + rs);
         System.out.println("REPORT8\n" + String.join("\n", report));
     }
+
+    static float[] withRms(float[] x, double rms) {
+        double e = 0;
+        for (float v : x) e += v * v;
+        double g = rms / Math.sqrt(e / x.length + 1e-20);
+        float[] y = new float[x.length];
+        for (int i = 0; i < x.length; i++) y[i] = (float) (x[i] * g);
+        return y;
+    }
+
+    /** "ш-ш-ш": noise with the low part removed (energy mostly 2-8 kHz). */
+    static float[] hiss(double sec, double rms) {
+        Random r = new Random(17);
+        float[] y = new float[(int) (sec * RATE)];
+        for (int k = 0; k < 150; k++) {
+            double f = 2000 + r.nextDouble() * 5500, ph = r.nextDouble() * 2 * Math.PI, w = 2 * Math.PI * f / RATE;
+            for (int i = 0; i < y.length; i++) y[i] += (float) Math.sin(w * i + ph);
+        }
+        return withRms(y, rms);
+    }
+
+    static float[] hum(double f0, double sec, double rms) {
+        return withRms(vowel(f0, 300, 870, 2240, sec), rms);
+    }
+
+    float tugRound(Object g, float[] sound) throws Exception {
+        call(g, "start", new Class<?>[]{});
+        mic(concat(silence(3), sound, silence(40)), false);
+        long until = System.currentTimeMillis() + 50000;
+        while (System.currentTimeMillis() < until) {
+            run(250);
+            String st = (String) call(g, "state", new Class<?>[]{});
+            if (st.equals("ROUND_OVER") || st.equals("MATCH_OVER")) break;
+        }
+        return (Float) call(g, "rope", new Class<?>[]{});
+    }
+
+    @Test
+    public void tugOfWar() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 53);
+        Object g = get(a, "tugGame");
+
+        // What does each sound alone do?  Children's "у", an adult's "у", a hiss, both together.
+        String[] names = {"дитяче «у» (300 Гц)", "доросле «у» (120 Гц)", "«ш»", "«у»+«ш» порівну"};
+        float[][] sounds = {hum(300, 3, 0.05), hum(120, 3, 0.05), hiss(3, 0.05), mix(hum(200, 3, 0.05), hiss(3, 0.05))};
+        float[] forces = new float[4];
+        for (int i = 0; i < 4; i++) {
+            mic(sounds[i], true);
+            run(2500);
+            forces[i] = (Float) call(g, "force", new Class<?>[]{});
+        }
+        mic(silence(1), true);
+        run(800);
+        float quiet = (Float) call(g, "force", new Class<?>[]{});
+        check("Канат: хто тягне", forces[0] < -0.6 && forces[1] < -0.6 && forces[2] > 0.6 && Math.abs(forces[3]) < 0.35 && Math.abs(quiet) < 0.05,
+                String.format("%s %.2f, %s %.2f, %s %.2f, %s %.2f, тиша %.2f", names[0], forces[0], names[1], forces[1], names[2], forces[2],
+                        names[3], forces[3], quiet));
+
+        // A match: «Гул» wins, then «Шум» (louder), then «Гул» again although «Шум» also hisses.
+        float r1 = tugRound(g, hum(250, 12, 0.05));
+        shot(a, "99_tug_round");
+        float r2 = tugRound(g, mix(hum(250, 12, 0.02), hiss(12, 0.06)));
+        float r3 = tugRound(g, mix(hum(130, 14, 0.06), hiss(14, 0.025)));
+        shot(a, "99_tug_match");
+        check("Канат: матч до двох перемог", r1 <= -1 && r2 >= 1 && r3 < -0.3 && "MATCH_OVER".equals(call(g, "state", new Class<?>[]{}))
+                        && (Integer) call(g, "winsLow", new Class<?>[]{}) == 2 && (Integer) call(g, "winsHigh", new Class<?>[]{}) == 1,
+                String.format("канат після раундів: %.2f, %.2f, %.2f; рахунок %s:%s", r1, r2, r3, call(g, "winsLow", new Class<?>[]{}),
+                        call(g, "winsHigh", new Class<?>[]{})));
+        System.out.println("REPORT9\n" + String.join("\n", report));
+    }
 }
