@@ -1040,6 +1040,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
+            {8, 54, "Живе піаніно (2–6 гравців)", "Кожен — одна нота, разом — пісня"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2101,6 +2102,46 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Порада: не кричіть у телефон з упору — сидіть на однаковій відстані, і хай переможе командна гра!";
     }
 
+    private HumanPianoGame pianoGame;
+
+    private String lessonPiano() {
+        ensureLive(0);
+        stopBuffer();
+        if (pianoGame == null) {
+            pianoGame = new HumanPianoGame(density(), new HumanPianoGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+            pianoGame.setPlayers(prefs.getString("piano_players", "Гравець 1, Гравець 2, Гравець 3"));
+        }
+        final HumanPianoGame g = pianoGame;
+        viz2d.showLesson(g);
+        dynSpinner("Пісня", HumanPianoGame.SONGS, g.song, new OnPick() {
+            @Override public void pick(int i) { g.song = i; viz2d.invalidate(); }
+        });
+        dynLabel("Гравці (через кому, до 6) — ноти розподіляться по колу:");
+        final EditText names = dynEdit("Аня, Богдан, Віка", g.playersCsv());
+        LinearLayout row = dynRow();
+        dynButton(row, "👥 Зберегти", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                g.setPlayers(names.getText().toString());
+                prefs.edit().putString("piano_players", g.playersCsv()).apply();
+                names.setText(g.playersCsv());
+                viz2d.invalidate();
+            }
+        });
+        Button go = dynButton(row, "▶ Грати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Хор, де кожен — одна клавіша піаніно. Зліва видно, хто яку ноту співає (якщо людей менше, ніж нот, "
+                + "комусь дістанеться дві). На початку телефон зіграє кожну ноту — запам'ятайте свою. Потім пісня "
+                + "біжить справа наліво: коли ваш брусок доходить до білої лінії, співайте свою ноту на «ля-а-а» і тримайте, "
+                + "поки брусок не пройде.\n\n"
+                + "Октава не має значення: «до» дитини і «до» дорослого — та сама нота (частота відрізняється рівно вдвічі). "
+                + "Тому співати можуть усі разом. Зелений брусок — влучили, рожевий — ні. Наприкінці — оцінка кожного і "
+                + "зірки для всієї команди.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2427,6 +2468,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 51: text = lessonWind(); break;
             case 52: text = lessonMusicPause(); break;
             case 53: text = lessonTug(); break;
+            case 54: text = lessonPiano(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

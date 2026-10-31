@@ -152,6 +152,12 @@ public class MicCheck {
         return me.invoke(null, args);
     }
 
+    static Object staticField(String cls, String name) throws Exception {
+        Field f = Class.forName("com.example.audiospectrumpro." + cls).getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(null);
+    }
+
     static void run(long ms) throws Exception {
         long end = System.currentTimeMillis() + ms;
         while (System.currentTimeMillis() < end) { Thread.sleep(20); shadowOf(Looper.getMainLooper()).idle(); }
@@ -1186,5 +1192,60 @@ public class MicCheck {
                 String.format("канат після раундів: %.2f, %.2f, %.2f; рахунок %s:%s", r1, r2, r3, call(g, "winsLow", new Class<?>[]{}),
                         call(g, "winsHigh", new Class<?>[]{})));
         System.out.println("REPORT9\n" + String.join("\n", report));
+    }
+
+    @Test
+    public void humanPiano() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 54);
+        Object g = get(a, "pianoGame");
+        call(g, "setPlayers", new Class<?>[]{String.class}, "Аня, Богдан, Віка");
+        setField(g, "song", 0);
+        int[][] song = ((int[][][]) staticField("HumanPianoGame", "SONG_DATA"))[0];
+        int[] pc = {0, 2, 4, 5, 7, 9};
+        float beat = 0.75f;
+        float offset = (Float) staticCall("HumanPianoGame", "songOffset", new Class<?>[]{int.class}, 0);
+        // Аня sings an octave low (adult), Богдан in the middle, Віка an octave high (child).
+        double[] octave = {0.5, 1, 2};
+        int[] notesOf = new int[3], hitsOf = new int[3];
+        float[] x = new float[(int) ((offset + 30 * beat + 3) * RATE)];
+        int b = 0, wrongLeft = 2, silentLeft = 1;
+        for (int[] n : song) {
+            int player = n[0] % 3;                       // notes 0..5 are all used, so the order index is the note
+            notesOf[player]++;
+            double hz = 261.63 * Math.pow(2, pc[n[0]] / 12.0) * octave[player];
+            boolean wrong = player == 1 && n[1] == 1 && wrongLeft > 0 && b > 4;
+            boolean silent = player == 2 && silentLeft > 0 && b > 10;
+            if (wrong) { wrongLeft--; hz *= Math.pow(2, 1 / 12.0); }
+            if (silent) silentLeft--;
+            if (!wrong && !silent) hitsOf[player]++;
+            if (!silent) {
+                float[] v = voice(hz, n[1] * beat - 0.08, 0.3f);
+                int at = (int) ((offset + b * beat + 0.12) * RATE);
+                for (int i = 0; i < v.length; i++) x[at + i] += v[i];
+            }
+            b += n[1];
+        }
+        call(g, "start", new Class<?>[]{});
+        mic(x, false);
+        run((long) ((offset + 4 * beat) * 1000));
+        shot(a, "99_piano_play");
+        waitState(g, "RESULT", 60000);
+        shot(a, "99_piano_result");
+        StringBuilder sb = new StringBuilder();
+        boolean ok = "RESULT".equals(call(g, "state", new Class<?>[]{}));
+        for (int p2 = 0; p2 < 3; p2++) {
+            float acc = (Float) call(g, "accuracy", new Class<?>[]{int.class}, p2);
+            float want = (float) hitsOf[p2] / notesOf[p2];
+            sb.append(String.format("гравець %d: %.0f%% (очікувалось %.0f%%)  ", p2 + 1, acc * 100, want * 100));
+            ok &= Math.abs(acc - want) < 0.01;
+        }
+        check("Живе піаніно: хто влучив", ok, sb.toString());
+        System.out.println("REPORT10\n" + String.join("\n", report));
     }
 }
