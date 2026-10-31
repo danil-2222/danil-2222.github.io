@@ -829,14 +829,57 @@ public class MicCheck {
 
     /** Adds a 6-10 kHz chirp starting at an exact (sub-sample) time, like a real sound arriving. */
     static void chirpAt(float[] x, double atS, float amp) {
+        double len = 0.04, f0 = 2500, f1 = 7500;
         int from = (int) Math.floor(atS * RATE);
-        for (int i = Math.max(0, from); i < x.length && i < from + RATE / 50 + 2; i++) {
+        for (int i = Math.max(0, from); i < x.length && i < from + (int) (len * RATE) + 2; i++) {
             double t = (double) i / RATE - atS;
-            if (t < 0 || t >= 0.02) continue;
-            double ph = 2 * Math.PI * (6000 * t + 4000 * t * t / (2 * 0.02));
-            double win = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 0.02);
+            if (t < 0 || t >= len) continue;
+            double ph = 2 * Math.PI * (f0 * t + (f1 - f0) * t * t / (2 * len));
+            double win = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / len);
             x[i] += (float) (amp * win * Math.sin(ph));
         }
+    }
+
+    static void toneAt(float[] x, double atS, double sec, double hz, float amp) {
+        int from = (int) (atS * RATE), n = (int) (sec * RATE), fade = RATE / 100;
+        for (int i = 0; i < n && from + i < x.length; i++) {
+            double env = Math.min(1, Math.min(i, n - i) / (double) fade);
+            x[from + i] += (float) (amp * env * Math.sin(2 * Math.PI * hz * i / RATE));
+        }
+    }
+
+    /**
+     * What phone A hears during one "▶ Почати": its own hello after the 3 s count-down, B's answer, then three
+     * chirp exchanges, each followed by B's time sent by modem. Starts at the moment of pressing.
+     */
+    static float[] aRun(double d, double c, double selfA, double selfB, Random r) throws Exception {
+        float[] x = new float[(int) (40 * RATE)];
+        float[] n = noise(40, 0.004f);
+        for (int i = 0; i < x.length; i++) x[i] = n[i];
+        double lat = 0.12;
+        toneAt(x, 3.0 + lat, 0.4, 1000, 0.6f);                         // own hello
+        double reply = 3.0 + lat + 0.12 + 0.45;                           // B heard it after 120 ms and answered
+        toneAt(x, reply, 0.4, 1400, (float) (0.25 / d));
+        double next = reply + 0.12 + 0.9 + lat;                           // A chirps 0.9 s after hearing the answer
+        for (int k = 0; k < 3; k++) {
+            double ea = next, eb = ea + 0.5 + r.nextDouble() * 0.05;
+            chirpAt(x, ea + selfA / c, 0.8f);
+            chirpAt(x, ea + selfA / c + 0.003, 0.3f);
+            chirpAt(x, eb + d / c, (float) (0.3 / d));
+            chirpAt(x, eb + d / c + 0.005, (float) (0.12 / d));
+            long deltaB = Math.round((eb + selfB / c - (ea + d / c)) * 1e6);
+            float[] msg = modem("B:" + deltaB, (float) (0.4 / Math.max(1, d)));
+            int at = (int) ((eb + 0.75) * RATE);
+            for (int i = 0; i < msg.length; i++) x[at + i] += msg[i];
+            next = eb + 0.75 + msg.length / (double) RATE + 0.1 + 1.2 + lat;
+        }
+        return java.util.Arrays.copyOf(x, (int) ((next + 2) * RATE));
+    }
+
+    static void waitIdle(Object t, long maxMs) throws Exception {
+        long until = System.currentTimeMillis() + maxMs;
+        run(500);
+        while (System.currentTimeMillis() < until && !"IDLE".equals(call(t, "state", new Class<?>[]{}))) run(250);
     }
 
     static void setField(Object o, String name, Object v) throws Exception {
@@ -859,52 +902,82 @@ public class MicCheck {
         Class<?> roleCls = Class.forName("com.example.audiospectrumpro.TemperatureExperiment$Role");
         final double tempC = 8, c = 331.3 + 0.606 * tempC, self = 0.10;
 
-        // Phone B: hears A, answers, and sends its own time between the two chirps.
+        // Phone B: "▶ Почати", hears A's hello and answers, then hears A's chirp, answers it and sends its time.
         call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "RESPONDER"));
+        call(t, "start", new Class<?>[]{});
         run(300);
-        double d = 1.3, eA = 0.4, eB = eA + 0.47;
-        float[] sigB = mix(noise(4, 0.002f), silence(4));
-        chirpAt(sigB, eA + d / c, 0.25f);
-        chirpAt(sigB, eA + d / c + 0.004, 0.1f);        // reflection
+        double d = 1.3;
+        float[] sigB = noise(6, 0.004f);
+        toneAt(sigB, 0.5, 0.4, 1000, 0.15f);                             // A's hello
+        toneAt(sigB, 1.1, 0.4, 1400, 0.6f);                              // B's own answer
+        double eA = 2.2, eB = eA + 0.75;
+        chirpAt(sigB, eA + d / c, 0.2f);
+        chirpAt(sigB, eA + d / c + 0.004, 0.1f);
         chirpAt(sigB, eB + self / c, 0.7f);
         mic(sigB, false);
-        run(2500);
+        run(1300);
+        boolean helloOk = (Boolean) call(t, "linkOk", new Class<?>[]{}) && "B_READY".equals(call(t, "state", new Class<?>[]{}));
+        run(3200);
         long expected = Math.round((eB + self / c - eA - d / c) * 1e6);
         String sent = (String) call(t, "sent", new Class<?>[]{});
         long got = sent.startsWith("B:") ? Long.parseLong(sent.substring(2)) : -1;
         shot(a, "99_temperature_B");
-        check("Термометр: телефон B відповідає", Math.abs(got - expected) <= 15,
-                String.format("надіслав %s, очікувалось B:%d (похибка %d мкс), пропущено кадрами %d семплів", sent, expected, got - expected, (Long) call(t, "lostSamples", new Class<?>[]{})));
-        run(3000);
+        check("Термометр: телефон B вітається і відповідає", helloOk && Math.abs(got - expected) <= 15,
+                String.format("привітання почуто й відповідь дано: %s; надіслав %s, очікувалось B:%d (похибка %d мкс)", helloOk ? "✓" : "✗",
+                        sent, expected, got - expected));
 
-        // Phone A: measurements at three distances; B's time arrives through the modem.
+        // A real room: A's chirp arrives quiet and smeared (tinny speaker + a dozen reflections in 25 ms).
+        call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "RESPONDER"));
+        call(t, "start", new Class<?>[]{});
+        run(300);
+        float[] room = noise(6, 0.004f);
+        toneAt(room, 0.5, 0.4, 1000, 0.03f);
+        Random rr = new Random(2);
+        float[] dry = new float[RATE / 10];
+        chirpAt(dry, 0.0, 1f);
+        for (int i = dry.length - 1; i > 0; i--) dry[i] = dry[i] - 0.85f * dry[i - 1];   // tinny: little low end
+        double at0 = 2.2;
+        for (int refl = 0; refl < 12; refl++) {
+            double delay = refl == 0 ? 0 : 0.001 + rr.nextDouble() * 0.024, g = refl == 0 ? 0.02 : 0.02 * (0.3 + 0.5 * rr.nextDouble());
+            int off = (int) ((at0 + delay) * RATE);
+            for (int i = 0; i < dry.length && off + i < room.length; i++) room[off + i] += (float) (g * dry[i] * (rr.nextBoolean() ? 1 : -1 * 0 + 1));
+        }
+        chirpAt(room, at0 + 0.75, 0.7f);
+        mic(room, false);
+        run(5000);
+        String sent2 = (String) call(t, "sent", new Class<?>[]{});
+        check("Термометр: B чує тихий спотворений пік у кімнаті", !sent2.equals(sent) && sent2.startsWith("B:"),
+                "B відповів і надіслав " + sent2 + " (сигнал ~ −34 дБ, шум −52 дБ, 12 відбиттів)");
+
+        // Phone A: one press = hello, answer, three measurements. Three distances.
         call(t, "setRole", new Class<?>[]{roleCls}, Enum.valueOf((Class) roleCls, "LEADER"));
-        double[] dist = {0.5, 0.5, 1.5, 3.0};
+        call(t, "clearResults", new Class<?>[]{});
+        double[] dist = {0.5, 1.5, 3.0};
         for (double dd : dist) {
             setField(t, "distance", (float) dd);
             mic(silence(1), true);
-            run(300);
-            call(t, "measure", new Class<?>[]{});
-            double ea = 0.3, eb = ea + 0.43 + r.nextDouble() * 0.05;
-            double tOwn = ea + self / c, tOther = eb + dd / c;
-            long deltaB = Math.round((eb + self / c - (ea + dd / c)) * 1e6);
-            float[] msg = (float[]) staticCall("ModemLesson", "encode", new Class<?>[]{String.class, int.class}, "B:" + deltaB, RATE);
-            for (int i = 0; i < msg.length; i++) msg[i] *= 0.4f;
-            float[] sig = mix(noise(7, 0.008f), concat(silence(tOther + 0.6), msg, silence(1)));
-            chirpAt(sig, tOwn, 0.8f);
-            chirpAt(sig, tOwn + 0.003, 0.3f);
-            chirpAt(sig, tOther, (float) (0.3 / dd));
-            chirpAt(sig, tOther + 0.005, (float) (dd > 2 ? 0.2 : 0.12 / dd));
-            mic(sig, false);
-            long until = System.currentTimeMillis() + 20000;
-            while (System.currentTimeMillis() < until && !"IDLE".equals(call(t, "state", new Class<?>[]{}))) run(200);
+            run(400);
+            call(t, "start", new Class<?>[]{});
+            mic(aRun(dd, c, 0.13, 0.11, r), false);
+            waitIdle(t, 60000);
         }
         int n = (Integer) call(t, "count", new Class<?>[]{});
         double speed = (Double) call(t, "speed", new Class<?>[]{});
         double temp = (speed - 331.3) / 0.606;
         shot(a, "99_temperature_A");
-        check("Термометр: швидкість звуку і температура", n == dist.length && Math.abs(temp - tempC) < 1.0,
-                String.format("вимірів %d, c = %.2f м/с (правда %.2f), T = %.2f °C (правда %.1f)", n, speed, c, temp, tempC));
+        check("Термометр: швидкість звуку і температура", n == 9 && Math.abs(temp - tempC) < 1.0,
+                String.format("вимірів %d (по 3 на кожну відстань), c = %.2f м/с (правда %.2f), T = %.2f °C (правда %.1f)", n, speed, c, temp, tempC));
+
+        // B is silent (wrong role or too quiet): A must say so clearly instead of hanging.
+        mic(silence(1), true);
+        run(400);
+        call(t, "start", new Class<?>[]{});
+        float[] lonely = noise(9, 0.004f);
+        toneAt(lonely, 3.1, 0.4, 1000, 0.6f);
+        mic(lonely, false);
+        waitIdle(t, 20000);
+        String st = (String) get(t, "status");
+        check("Термометр: якщо B мовчить", st.startsWith("✗ B не відповів на привітання"), "повідомлення: " + st);
         System.out.println("REPORT6\n" + String.join("\n", report));
     }
 
@@ -947,6 +1020,7 @@ public class MicCheck {
         }
         return (Float) call(g, "score", new Class<?>[]{int.class, int.class}, p, contest);
     }
+
 
     @Test
     public void windGame() throws Exception {
@@ -1966,19 +2040,6 @@ public class MicCheck {
     }
 
     /** Phone A's microphone during one two-way measurement at distance dd. */
-    static float[] twoWay(double dd, double c, double self, Random r) throws Exception {
-        double ea = 0.3, eb = ea + 0.43 + r.nextDouble() * 0.05;
-        double tOwn = ea + self / c, tOther = eb + dd / c;
-        long deltaB = Math.round((eb + self / c - (ea + dd / c)) * 1e6);
-        float[] msg = modem("B:" + deltaB, 0.4f);
-        float[] sig = mix(noise(7, 0.004f), concat(silence(tOther + 0.6), msg, silence(1)));
-        chirpAt(sig, tOwn, 0.8f);
-        chirpAt(sig, tOwn + 0.003, 0.3f);
-        chirpAt(sig, tOther, (float) (0.3 / dd));
-        chirpAt(sig, tOther + 0.005, (float) (0.12 / dd));
-        return sig;
-    }
-
     @Test
     public void soundRuler() throws Exception {
         installMic();
@@ -2001,9 +2062,8 @@ public class MicCheck {
             mic(silence(1), true);
             run(300);
             call(t, i == 0 ? "calibrate" : "measure", new Class<?>[]{});
-            mic(twoWay(steps[i], c, self, r), false);
-            long until = System.currentTimeMillis() + 20000;
-            while (System.currentTimeMillis() < until && !"IDLE".equals(call(t, "state", new Class<?>[]{}))) run(200);
+            mic(aRun(steps[i], c, self, self - 0.02, r), false);
+            waitIdle(t, 60000);
             if (i > 0) {
                 double got = (Double) call(t, "lastDistance", new Class<?>[]{});
                 boolean good = Math.abs(got - steps[i]) < 0.02;

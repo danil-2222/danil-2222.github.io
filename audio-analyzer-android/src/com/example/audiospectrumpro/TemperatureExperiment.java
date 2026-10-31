@@ -22,10 +22,14 @@ final class TemperatureExperiment implements LessonView {
     }
 
     enum Role { LEADER, RESPONDER }
-    enum State { IDLE, A_SELF, A_OTHER, A_MSG, B_ARMED, B_WAIT_PLAY, B_SELF, B_SEND }
+    enum State { IDLE, A_COUNT, A_HELLO, A_GAP, A_SELF, A_OTHER, A_MSG, B_ARMED, B_READY, B_WAIT_PLAY, B_SELF, B_SEND }
 
     static final int OUT_RATE = 48000;
-    static final float CHIRP_S = 0.02f, F0 = 6000, F1 = 10000;
+    /** A longer chirp in the band every phone plays and hears well (more energy, easier to find). */
+    static final float CHIRP_S = 0.04f, F0 = 2500, F1 = 7500;
+    /** Handshake tones: A says "hello", B answers, so both know they hear each other before measuring. */
+    static final float HELLO_A = 1000, HELLO_B = 1400, HELLO_S = 0.4f;
+    static final int REPEATS = 3;
     /** Assumed speaker-to-microphone distance inside one phone (only used with a single distance). */
     static final float SELF_M = 0.12f;
     static final float REPLY_MS = 400;
@@ -65,6 +69,12 @@ final class TemperatureExperiment implements LessonView {
     private long lastDetect = Long.MIN_VALUE / 2;
     private final List<Long> pending = new ArrayList<>();
 
+    private int helloRun, helloAt;           // consecutive 10 ms blocks with the expected hello tone
+    private float toneFloorA = -90, toneFloorB = -90, ignoreHelloUntil;
+    private float chirpBandDb = -120;           // live level in the chirp band, for the "what do I hear" meter
+    private int heardChirps, repeatsLeft;
+    private final List<Double> runD = new ArrayList<>();
+    private boolean linkOk;
     private double firstArrival;          // refined sample position of the first chirp heard
     private double deltaA = Double.NaN, deltaB = Double.NaN;
     private String sent = "";
@@ -104,6 +114,12 @@ final class TemperatureExperiment implements LessonView {
     }
 
     /** Sound to emit: the chirp with short silence around it, at the loudspeaker rate. */
+    static float[] hello(float hz) {
+        float[] out = new float[(int) ((HELLO_S + 0.1f) * OUT_RATE)];
+        LessonKit.addTone(out, 0, (int) (HELLO_S * OUT_RATE), hz, 0.9f, OUT_RATE, OUT_RATE / 100);
+        return out;
+    }
+
     static float[] chirpSound() {
         float[] c = chirp(OUT_RATE);
         float[] out = new float[c.length + OUT_RATE / 5];
@@ -116,25 +132,43 @@ final class TemperatureExperiment implements LessonView {
         pending.clear();
         decoder.reset();
         decoder.clearReceived();
+        linkOk = false;
+        helloRun = 0;
         if (r == Role.RESPONDER) {
             state = State.B_ARMED;
-            status = "👂 Чекаю на «пік» від телефона A…";
+            status = "👂 Чекаю привітання від телефона A…";
         } else {
             state = State.IDLE;
-            status = "Поставте телефони і натисніть «Виміряти»";
+            status = "Натисніть «▶ Почати» на ОБОХ телефонах";
         }
     }
 
-    /** Leader: one measurement at the current distance. */
-    void measure() {
-        if (role != Role.LEADER) return;
+    /**
+     * Start button on either phone. B: listen for A's hello. A: 3 s count-down, hello, wait for B's answer,
+     * then three measurements in a row.
+     */
+    void start() {
+        if (role == Role.RESPONDER) { setRole(Role.RESPONDER); return; }
+        runD.clear();
+        repeatsLeft = REPEATS;
+        linkOk = false;
+        state = State.A_COUNT;
+        deadline = clockMs + 3000;
+        status = "Через 3 с телефон A привітається…";
+    }
+
+    /** Kept for compatibility: the same as start(). */
+    void measure() { start(); }
+
+    /** One chirp exchange (A). */
+    private void chirpNow() {
         pending.clear();
         decoder.reset();
         decoder.clearReceived();
         deltaA = deltaB = Double.NaN;
         state = State.A_SELF;
         deadline = clockMs + 3000;
-        status = "📢 Пік!";
+        status = String.format(Locale.US, "📢 Пік! (вимір %d з %d)", REPEATS - repeatsLeft + 1, REPEATS);
         sound.play(chirpSound(), false);
     }
 
@@ -158,6 +192,8 @@ final class TemperatureExperiment implements LessonView {
     }
 
     int count() { return results.size(); }
+    boolean linkOk() { return linkOk; }
+    int heardChirps() { return heardChirps; }
     String state() { return state.name(); }
     String sent() { return sent; }
     double deltaA() { return deltaA; }
@@ -198,6 +234,7 @@ final class TemperatureExperiment implements LessonView {
         float[] fresh = take(f);
         int block = rate / 100;
         for (int i = 0; i < fresh.length; i++) ring[(int) ((total + i) % ring.length)] = fresh[i];
+        listenHello(fresh, block);
         float[] hp = fresh.clone();
         hp1.process(hp, hp.length);
         hp2.process(hp, hp.length);
@@ -207,7 +244,9 @@ final class TemperatureExperiment implements LessonView {
             for (int i = 0; i < block; i++) e += hp[off + i] * hp[off + i];
             e /= block;
             long at = total + off;
-            boolean listening = state == State.A_SELF || state == State.A_OTHER || state == State.B_ARMED || state == State.B_SELF;
+            chirpBandDb = (float) (10 * Math.log10(e + 1e-14));
+            boolean listening = state == State.A_SELF || state == State.A_OTHER || state == State.B_READY || state == State.B_ARMED
+                    || state == State.B_SELF;
             if (listening && e > floor * 25 && e > 1e-8 && at - lastDetect > rate * 0.15) {
                 lastDetect = at;
                 pending.add(at);
@@ -245,14 +284,47 @@ final class TemperatureExperiment implements LessonView {
 
     long lostSamples() { return lostSamples; }
 
+    /** Hello tones (10 ms Goertzel blocks): A listens for B's answer, B for A's hello. */
+    private void listenHello(float[] x, int block) {
+        boolean wantA = state == State.B_ARMED || state == State.B_READY, wantB = state == State.A_HELLO;
+        for (int off = 0; off + block <= x.length; off += block) {
+            float a = LessonKit.toneDb(x, off, block, HELLO_A, rate), b = LessonKit.toneDb(x, off, block, HELLO_B, rate);
+            toneFloorA = a < toneFloorA ? a : toneFloorA + 0.02f * (a - toneFloorA);
+            toneFloorB = b < toneFloorB ? b : toneFloorB + 0.02f * (b - toneFloorB);
+            float t = clockMs + (off + block) * 1000f / rate;
+            boolean on = wantA ? a > toneFloorA + 15 && a > -75 : wantB && b > toneFloorB + 15 && b > -75;
+            if (t < ignoreHelloUntil) on = false;
+            helloRun = on ? helloRun + 1 : 0;
+            if (helloRun == 12) onHello();                    // 120 ms of the tone: not a coincidence
+        }
+    }
+
+    private void onHello() {
+        helloRun = 0;
+        if (state == State.B_ARMED || state == State.B_READY) {
+            sound.play(hello(HELLO_B), false);
+            ignoreHelloUntil = clockMs + (HELLO_S + 0.6f) * 1000;
+            linkOk = true;
+            state = State.B_READY;
+            deadline = clockMs + 30000;
+            pending.clear();
+            status = "✓ Почув телефон A і відповів. Чекаю «пік»…";
+        } else if (state == State.A_HELLO) {
+            linkOk = true;
+            state = State.A_GAP;
+            deadline = clockMs + 900;
+            status = "✓ Телефон B на зв'язку! Починаю вимір…";
+        }
+    }
+
     private void init(int r) {
         rate = r;
         ring = new float[r * 4];
         total = 0;
         tplSin = chirp(r);
         tplCos = chirpQuadrature(r);
-        hp1.setCustom(true, 5200, 0.707, r);
-        hp2.setCustom(true, 5200, 0.707, r);
+        hp1.setCustom(true, 2000, 0.707, r);
+        hp2.setCustom(true, 2000, 0.707, r);
         pending.clear();
     }
 
@@ -287,7 +359,10 @@ final class TemperatureExperiment implements LessonView {
             float x = ring[(int) ((from + best + i) % ring.length)];
             energy += x * x;
         }
-        if (max < 0.5 * Math.sqrt(energy * tplE)) return Double.NaN;
+        // A real room and phone speaker distort the chirp; a third of the ideal match is plenty
+        // (noise and speech give far less).
+        if (max < 0.3 * Math.sqrt(energy * tplE)) return Double.NaN;
+        heardChirps++;
         // The direct sound comes first; later and sometimes stronger peaks are reflections.
         for (int p = 1; p + 1 < len; p++) {
             if (env[p] >= 0.3 * max && env[p] >= env[p - 1] && env[p] >= env[p + 1]) {
@@ -316,6 +391,8 @@ final class TemperatureExperiment implements LessonView {
                 status = "📡 Чекаю, поки B передасть свій час…";
                 break;
             case B_ARMED:
+            case B_READY:
+                linkOk = true;
                 firstArrival = pos;
                 state = State.B_WAIT_PLAY;
                 playAt = clockMs + REPLY_MS - 60;
@@ -339,11 +416,32 @@ final class TemperatureExperiment implements LessonView {
 
     private void tick() {
         switch (state) {
+            case A_COUNT:
+                if (clockMs >= deadline) {
+                    sound.play(hello(HELLO_A), false);
+                    ignoreHelloUntil = 0;
+                    helloRun = 0;
+                    state = State.A_HELLO;
+                    deadline = clockMs + 3500;
+                    status = "👋 Вітаюсь… чекаю відповідь B";
+                } else {
+                    status = "Через " + (int) Math.ceil((deadline - clockMs) / 1000) + " с телефон A привітається…";
+                }
+                break;
+            case A_HELLO:
+                if (clockMs > deadline) fail("B не відповів на привітання. На B — «Відповідач» і «▶ Почати»? Гучність на максимум, ближче.");
+                break;
+            case A_GAP:
+                if (clockMs >= deadline) chirpNow();
+                break;
+            case B_READY:
+                if (clockMs > deadline) { state = State.B_ARMED; status = "👂 Чекаю привітання від телефона A…"; }
+                break;
             case A_SELF:
                 if (clockMs > deadline) fail("Телефон не почув власний «пік». Збільште гучність.");
                 break;
             case A_OTHER:
-                if (clockMs > deadline) fail("Відповіді від B немає. Чи вибрано на ньому «Відповідач»? Гучність на максимум.");
+                if (clockMs > deadline) fail("B не відповів на «пік». Гучність на максимум, телефони низом один до одного.");
                 break;
             case A_MSG: {
                 String msg = decoder.receivedText();
@@ -359,6 +457,15 @@ final class TemperatureExperiment implements LessonView {
                         fail(String.format(Locale.US, "Дивний результат (%.2f мс) — повторіть.", d * 1000));
                         break;
                     }
+                    runD.add(d);
+                    repeatsLeft--;
+                    if (repeatsLeft > 0) {
+                        state = State.A_GAP;
+                        deadline = clockMs + 1200;
+                        status = String.format(Locale.US, "✓ Вимір %d: %.3f мс. Ще раз…", runD.size(), d * 1000);
+                        break;
+                    }
+                    d = median(runD);
                     state = State.IDLE;
                     if (ruler) {
                         if (calibrateNext) {
@@ -373,14 +480,14 @@ final class TemperatureExperiment implements LessonView {
                         }
                         break;
                     }
-                    results.add(new Measurement(distance, d));
+                    for (double one : runD) results.add(new Measurement(distance, one));
                     Journal.add("Термометр зі звуку", String.format(Locale.US, "різниця часу на %.2f м", distance), d * 1000, "мс");
                     if (spread() >= 0.2f) {
                         Journal.add("Термометр зі звуку", "швидкість звуку", speed(), "м/с");
                         Journal.add("Термометр зі звуку", "температура повітря", temperature(speed()), "°C");
                     }
-                    status = String.format(Locale.US, "✓ %s: різниця часу %.3f мс",
-                            fmtM(distance), d * 1000);
+                    status = String.format(Locale.US, "✓ %s: %d виміри, різниця часу %.3f мс",
+                            fmtM(distance), runD.size(), d * 1000);
                 } else if (clockMs > deadline) {
                     fail("Не почув повідомлення від B. Тиша навколо допоможе.");
                 }
@@ -395,13 +502,15 @@ final class TemperatureExperiment implements LessonView {
                 break;
             case B_SELF:
                 if (clockMs > deadline) {
-                    state = State.B_ARMED;
+                    state = State.B_READY;
+                    deadline = clockMs + 30000;
                     status = "✗ Не почув свій «пік». Гучніше!";
                 }
                 break;
             case B_SEND:
                 if (clockMs > deadline) {
-                    state = State.B_ARMED;
+                    state = State.B_READY;
+                    deadline = clockMs + 30000;
                     pending.clear();
                     lastDetect = total;
                     status = String.format(Locale.US, "✓ Надіслано ΔB = %.3f мс. Чекаю знову…", deltaB * 1000);
@@ -410,6 +519,13 @@ final class TemperatureExperiment implements LessonView {
             default:
                 break;
         }
+    }
+
+    static double median(List<Double> v) {
+        double[] a = new double[v.size()];
+        for (int i = 0; i < a.length; i++) a[i] = v.get(i);
+        java.util.Arrays.sort(a);
+        return a.length == 0 ? Double.NaN : a.length % 2 == 1 ? a[a.length / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
     }
 
     private void fail(String why) {
@@ -456,11 +572,21 @@ final class TemperatureExperiment implements LessonView {
         k.label(c, s1, 8 * dp, 136 * dp, 12, sc, Paint.Align.LEFT, true);
         if (!s2.isEmpty()) k.label(c, s2, 8 * dp, 152 * dp, 12, sc, Paint.Align.LEFT, true);
 
+        // Link and "what do I hear" meter: shows at once whether the phones hear each other.
+        float my = 160 * dp;
+        k.label(c, linkOk ? "🔗 на зв'язку" : "🔗 ще не чули одне одного", 8 * dp, my, 11, linkOk ? LessonKit.GREEN : LessonKit.LABEL,
+                Paint.Align.LEFT, true);
+        float mx = 130 * dp, mw = w - 110 * dp - mx;
+        float lvl = Math.max(0, Math.min(1, (chirpBandDb + 90) / 70));
+        k.rect(c, mx, my - 9 * dp, mx + mw, my + 1 * dp, 0xFF1E293B);
+        k.rect(c, mx, my - 9 * dp, mx + mw * lvl, my + 1 * dp, lvl > 0.6f ? LessonKit.YELLOW : LessonKit.CYAN);
+        k.label(c, "чую піків: " + heardChirps, mx + mw, my + 14 * dp, 9.5f, LessonKit.LABEL, Paint.Align.RIGHT, false);
+
         double cs = speed();
         if (ruler && role == Role.LEADER) { drawRuler(c, w, h); return; }
         drawThermometer(c, w - 46 * dp, 60 * dp, h - 20 * dp, cs);
 
-        float top = 166 * dp, right = w - 96 * dp;
+        float top = 184 * dp, right = w - 96 * dp;
         if (role == Role.RESPONDER) {
             k.label(c, "Цей телефон тільки відповідає.", 8 * dp, top + 10 * dp, 12, LessonKit.SOFT, Paint.Align.LEFT, false);
             k.label(c, "Результат з'явиться на телефоні A.", 8 * dp, top + 28 * dp, 12, LessonKit.SOFT, Paint.Align.LEFT, false);

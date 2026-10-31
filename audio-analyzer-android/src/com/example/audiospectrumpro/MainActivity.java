@@ -2011,6 +2011,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             });
         }
         final TemperatureExperiment t = temperature;
+        loudForExperiment();
         viz2d.showLesson(t);
         dynSpinner("Роль цього телефона", new String[]{"A — ведучий (вимірює)", "B — відповідач"}, t.role.ordinal(),
                 new OnPick() {
@@ -2022,11 +2023,11 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             @Override public void pick(int p) { t.distance = 0.2f + 0.05f * p; }
         });
         LinearLayout row = dynRow();
-        Button go = dynButton(row, "📏 Виміряти", new View.OnClickListener() {
-            @Override public void onClick(View v) { t.measure(); viz2d.invalidate(); }
+        Button go = dynButton(row, "▶ Почати (на обох)", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.start(); viz2d.invalidate(); }
         });
         go.setTextColor(0xFF00F0FF);
-        dynButton(row, "Почати заново", new View.OnClickListener() {
+        dynButton(row, "Стерти виміри", new View.OnClickListener() {
             @Override public void onClick(View v) { t.clearResults(); viz2d.invalidate(); }
         });
         return "Звук у теплому повітрі біжить швидше: c ≈ 331,3 + 0,606·T м/с (T у °C). При 0 °C — 331 м/с, при 25 °C — 346 м/с. "
@@ -2036,14 +2037,26 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "звуком (модемом). Різниця ΔA − ΔB = 2·d / c плюс сталий доданок — усі затримки динаміків, мікрофонів і реакції "
                 + "скорочуються!\n\n"
                 + "Як робити:\n"
+                + "0. На обох телефонах гучність МУЛЬТИМЕДІА — на максимум (кнопками збоку, поки грає звук).\n"
                 + "1. На другому телефоні оберіть «B — відповідач». На своєму — «A — ведучий».\n"
-                + "2. Покладіть телефони низом (мікрофонами й динаміками) один до одного на відстані 0,5 м. Виставте її повзунком "
-                + "і натисніть «Виміряти» 2–3 рази.\n"
+                + "2. Покладіть телефони низом (мікрофонами й динаміками) один до одного на відстані 0,5 м. Виставте її повзунком. "
+                + "Натисніть «▶ Почати» на обох (спершу на B). Через 3 с A голосно «привітається» (1 кГц), B відповість — "
+                + "обидва покажуть «🔗 на зв'язку». Потім телефони самі зроблять 3 виміри поспіль.\n"
                 + "3. Відсуньте ОДИН телефон по рулетці ще на 2–3 м (не повертаючи) і повторіть. Застосунок знайде швидкість за "
                 + "нахилом — сталі похибки зникнуть.\n\n"
                 + "Точність: 1 см помилки на 3 м — це 0,3 % швидкості, тобто ±1 м/с ≈ ±2 °C, тож міряйте рулеткою й тримайте телефони "
                 + "нерухомо. Гучність — на максимум, навколо тиша. Вологість теж трохи прискорює звук (до +0,5 м/с), тому у "
-                + "вологому повітрі результат буде на 1 °C вищим.";
+                + "вологому повітрі результат буде на 1 °C вищим.\n\n"
+                + "Якщо «B не відповів»: дивіться смужку «чую» на B — коли A пищить, вона має підскочити. Не підскакує — "
+                + "зробіть голосніше, наблизьте телефони, приберіть чохол з динаміка.";
+    }
+
+    /** Measuring by sound needs the loudest clean output: the generator level to its normal maximum. */
+    private void loudForExperiment() {
+        if (SignalGenerator.level < 0.5f) {
+            SignalGenerator.level = 0.5f;
+            toast("Рівень генератора піднято — для вимірів потрібен гучний звук");
+        }
     }
 
     private WindGame windGame;
@@ -2602,6 +2615,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             rulerExp.ruler = true;
         }
         final TemperatureExperiment t = rulerExp;
+        loudForExperiment();
         viz2d.showLesson(t);
         dynSpinner("Роль цього телефона", new String[]{"A — вимірює", "B — відповідач"}, t.role.ordinal(), new OnPick() {
             @Override public void pick(int i) { t.setRole(TemperatureExperiment.Role.values()[i]); viz2d.invalidate(); }
@@ -2620,8 +2634,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         dynButton(row, "🎯 Калібрувати", new View.OnClickListener() {
             @Override public void onClick(View v) { t.calibrate(); viz2d.invalidate(); }
         });
-        Button go = dynButton(row, "📏 Виміряти", new View.OnClickListener() {
-            @Override public void onClick(View v) { t.measure(); viz2d.invalidate(); }
+        Button go = dynButton(row, "▶ Виміряти (на обох)", new View.OnClickListener() {
+            @Override public void onClick(View v) { t.start(); viz2d.invalidate(); }
         });
         go.setTextColor(0xFF00F0FF);
         return "Той самий спосіб, що в «Термометрі», тільки навпаки: температуру ми знаємо (поставте повзунок), а "
