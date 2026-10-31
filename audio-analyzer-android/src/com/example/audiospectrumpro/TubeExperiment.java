@@ -75,6 +75,8 @@ final class TubeExperiment implements LessonView {
         double d = den != 0 ? 0.5 * (a - c) / den : 0;
         freq = (float) ((best + Math.max(-0.5, Math.min(0.5, d))) * binHz);
         status = String.format(Locale.US, "✓ Тон трубки: %.1f Гц", freq);
+        Journal.add("Трубка", String.format(Locale.US, "тон трубки %.1f см", lengthM * 100), freq, "Гц");
+        Journal.add("Трубка", "швидкість звуку", speed(), "м/с");
     }
 
     private static float median(float[] v, int from, int to) {

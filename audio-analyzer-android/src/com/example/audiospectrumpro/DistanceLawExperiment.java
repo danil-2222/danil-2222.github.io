@@ -63,7 +63,11 @@ final class DistanceLawExperiment implements LessonView {
             acc += p;
             n++;
             left -= (float) AudioEngine.HOP / f.sampleRate;
-            if (left <= 0) points.add(new float[]{distance, (float) (10 * Math.log10(acc / n + 1e-20))});
+            if (left <= 0) {
+                points.add(new float[]{distance, (float) (10 * Math.log10(acc / n + 1e-20))});
+                Journal.add("Закон −6 дБ", String.format(Locale.US, "рівень на %.2f м", distance), points.get(points.size() - 1)[1], "дБ");
+                if (fit() != null) Journal.add("Закон −6 дБ", "спад на подвоєння відстані", fit()[0], "дБ");
+            }
         }
     }
 

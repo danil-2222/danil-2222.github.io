@@ -111,6 +111,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Journal.init(this);
         setContentView(R.layout.activity_main);
         getWindow().setStatusBarColor(0xFF0F172A);
         getWindow().setNavigationBarColor(0xFF080C14);
@@ -1046,6 +1047,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 68, "Закон −6 дБ (2 телефони)", "Удвічі далі — на скільки тихіше?"},
             {7, 69, "Звукоізоляція (2 телефони)", "Що краще глушить: двері, подушка чи вікно?"},
             {7, 70, "Як кімнати «ковтають» звук", "Плесніть у ванній і в спальні — порівняйте луну"},
+            {7, 73, "📒 Журнал вимірів", "Усі результати експериментів — і експорт у CSV"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -1072,7 +1074,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     };
 
     /** Lessons that only show synthetic sound (the microphone is not used). */
-    private static final java.util.Set<Integer> NO_MIC = new java.util.HashSet<>(java.util.Arrays.asList(3, 4, 6, 9, 12, 27, 28, 59));
+    private static final java.util.Set<Integer> NO_MIC = new java.util.HashSet<>(java.util.Arrays.asList(3, 4, 6, 9, 12, 27, 28, 59, 73));
     /** Lessons that work with the microphone and also have a built-in demo sound. */
     private static final java.util.Set<Integer> MIC_AND_DEMO = new java.util.HashSet<>(java.util.Arrays.asList(5, 13, 14, 19, 20, 24, 26));
 
@@ -2778,6 +2780,52 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "басом. Наприкінці — бали і зірки.";
     }
 
+    private JournalView journalView;
+
+    private String lessonJournal() {
+        stopBuffer();
+        if (journalView == null) journalView = new JournalView(density());
+        final JournalView j = journalView;
+        j.note = "";
+        viz2d.showLesson(j);
+        LinearLayout row = dynRow();
+        Button save = dynButton(row, "💾 Зберегти CSV", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try {
+                    j.note = "збережено: " + Exporter.saveText(MainActivity.this, "journal", Journal.csv());
+                } catch (java.io.IOException e) {
+                    j.note = "не вдалося зберегти";
+                }
+                toast(j.note);
+                viz2d.invalidate();
+            }
+        });
+        save.setTextColor(0xFF00F0FF);
+        dynButton(row, "📤 Поділитися", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                send.setType("text/plain");
+                send.putExtra(android.content.Intent.EXTRA_SUBJECT, "Журнал вимірів Spectrum PRO");
+                send.putExtra(android.content.Intent.EXTRA_TEXT, Journal.csv());
+                try { startActivity(android.content.Intent.createChooser(send, "Поділитися журналом")); } catch (Exception ignored) { }
+            }
+        });
+        dynButton(dyn, "🗑 Очистити журнал", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                new android.app.AlertDialog.Builder(MainActivity.this).setMessage("Видалити всі записи журналу?")
+                        .setPositiveButton("Видалити", new android.content.DialogInterface.OnClickListener() {
+                            @Override public void onClick(android.content.DialogInterface d, int w) { Journal.clear(); viz2d.invalidate(); }
+                        }).setNegativeButton("Ні", null).show();
+            }
+        });
+        return "Сюди автоматично записуються результати експериментів: термометр, луна від стіни, трубка, рулетка, "
+                + "Доплер, закон −6 дБ, звукоізоляція, кімнати. Кожен запис — дата, експеримент, що виміряно, число й "
+                + "одиниці.\n\n"
+                + "«💾 Зберегти CSV» кладе таблицю в «Завантаження/SpectrumPro» — її відкриє Excel чи Google Таблиці, "
+                + "і можна будувати графіки: наприклад, як змінюється температура вранці й увечері. «📤 Поділитися» "
+                + "надсилає таблицю в месенджер чи пошту.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -3123,6 +3171,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 70: text = lessonAbsorption(); break;
             case 71: text = lessonShooter(); break;
             case 72: text = lessonKaraoke(); break;
+            case 73: text = lessonJournal(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

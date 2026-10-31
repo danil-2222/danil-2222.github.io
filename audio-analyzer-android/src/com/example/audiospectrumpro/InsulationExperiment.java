@@ -89,6 +89,12 @@ final class InsulationExperiment implements LessonView {
             if (barriers.size() >= COLORS.length) { barriers.remove(0); names.remove(0); }
             barriers.add(db);
             names.add(pendingName.isEmpty() ? "Перешкода " + (barriers.size()) : pendingName);
+            float[] a = attenuation(barriers.size() - 1);
+            if (a != null) {
+                float avg = 0;
+                for (float v : a) avg += v;
+                Journal.add("Звукоізоляція", names.get(names.size() - 1) + ": у середньому", avg / a.length, "дБ");
+            }
         }
     }
 

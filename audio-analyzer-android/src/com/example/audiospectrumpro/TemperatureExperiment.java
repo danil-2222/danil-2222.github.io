@@ -368,11 +368,17 @@ final class TemperatureExperiment implements LessonView {
                             status = "✓ Калібровано на " + fmtM(distance) + ". Тепер розставляйте телефони як завгодно";
                         } else {
                             lastDistance = rulerDistance(d);
+                            Journal.add("Рулетка зі звуку", "відстань між телефонами", lastDistance, "м");
                             status = String.format(Locale.US, "📏 Відстань: %.2f м", lastDistance);
                         }
                         break;
                     }
                     results.add(new Measurement(distance, d));
+                    Journal.add("Термометр зі звуку", String.format(Locale.US, "різниця часу на %.2f м", distance), d * 1000, "мс");
+                    if (spread() >= 0.2f) {
+                        Journal.add("Термометр зі звуку", "швидкість звуку", speed(), "м/с");
+                        Journal.add("Термометр зі звуку", "температура повітря", temperature(speed()), "°C");
+                    }
                     status = String.format(Locale.US, "✓ %s: різниця часу %.3f мс",
                             fmtM(distance), d * 1000);
                 } else if (clockMs > deadline) {

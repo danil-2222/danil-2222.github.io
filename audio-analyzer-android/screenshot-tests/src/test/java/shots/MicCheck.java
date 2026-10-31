@@ -2239,4 +2239,44 @@ public class MicCheck {
                 totals[0], totals[1]));
         System.out.println("REPORT28\n" + String.join("\n", report));
     }
+
+    @Test
+    public void labJournal() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        staticCall("Journal", "clear", new Class<?>[]{});
+        mic(silence(1), true);
+        // A real experiment writes into the journal: the tube.
+        lesson(a, 66);
+        Object t = get(a, "tube");
+        setField(t, "open", false); setField(t, "lengthM", 0.30f); setField(t, "diameterM", 0.025f);
+        double c = 331.3 + 0.606 * 22, f = c / (4 * (0.30 + 0.3 * 0.025));
+        call(t, "listen", new Class<?>[]{});
+        mic(concat(tubeSound(f, new int[]{1, 3, 5}, 3.5), silence(1)), false);
+        run(3800);
+        back(a);
+        // A name with a comma and quotes must survive the CSV round trip.
+        staticCall("Journal", "add", new Class<?>[]{String.class, String.class, double.class, String.class},
+                "Кімнати", "Ванна, \"мала\": RT60", 1.25, "с");
+        lesson(a, 73);
+        run(200);
+        clickText(a, "💾 Зберегти CSV");
+        run(300);
+        shot(a, "99_journal");
+        List<String[]> rows = (List<String[]>) staticCall("Journal", "rows", new Class<?>[]{});
+        String csv = (String) staticCall("Journal", "csv", new Class<?>[]{});
+        boolean tube = false, quoted = false;
+        for (String[] r : rows) {
+            if (r[1].equals("Трубка") && r[2].equals("швидкість звуку") && Math.abs(Double.parseDouble(r[3]) - c) < 3 && r[4].equals("м/с")) tube = true;
+            if (r[2].equals("Ванна, \"мала\": RT60") && r[3].equals("1.2500")) quoted = true;
+        }
+        Object jv = get(a, "journalView");
+        String note = (String) get(jv, "note");
+        check("Журнал вимірів (CSV)", tube && quoted && rows.size() == 3 && csv.startsWith("date,experiment,quantity,value,unit") && note.startsWith("збережено"),
+                "записів " + rows.size() + ": трубка ✓" + (tube ? "" : "✗") + ", назва з комою й лапками ✓" + (quoted ? "" : "✗") + "; " + note);
+        System.out.println("REPORT29\n" + String.join("\n", report));
+    }
 }

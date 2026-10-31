@@ -136,6 +136,7 @@ final class AbsorptionExperiment implements LessonView {
         Room r = current();
         if (Float.isNaN(t) || r == null) { status = "✗ Не вийшло — плесніть різкіше і голосніше"; return; }
         r.rt.add(t);
+        Journal.add("Кімнати", r.name + ": час луни RT60", t, "с");
         status = String.format(Locale.US, "✓ Оплеск %d: луна затихає за %.2f с", r.rt.size(), t);
     }
 

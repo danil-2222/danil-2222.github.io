@@ -35,6 +35,7 @@ final class DopplerExperiment implements LessonView {
     static float[] tone() { return LessonKit.carrierLoop(F0, 0.8f, 48000); }
 
     void start() {
+        if (!source && !Float.isNaN(speed())) Journal.add("Ефект Доплера", "швидкість телефона", speed(), "м/с");
         reset();
         if (source) sound.play(tone(), true); else sound.stop();
     }

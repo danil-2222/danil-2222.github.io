@@ -98,6 +98,11 @@ final class EchoSpeedExperiment implements LessonView {
         if (echo < 0 || env[echo] < 4 * noise + 1e-6) { status = "✗ Луни не чути. Ближче до стіни або гучніше."; return; }
         double delay = (refinePeak(env, echo) - refinePeak(env, direct)) / rate;
         results.add(new float[]{distance, (float) delay});
+        Journal.add("Луна від стіни", String.format(Locale.US, "затримка луни на %.2f м", distance), delay * 1000, "мс");
+        if (precise()) {
+            Journal.add("Луна від стіни", "швидкість звуку", speed(), "м/с");
+            Journal.add("Луна від стіни", "температура повітря", TemperatureExperiment.temperature(speed()), "°C");
+        }
         status = String.format(Locale.US, "✓ %.2f м: луна на %.2f мс пізніше", distance, delay * 1000);
     }
 

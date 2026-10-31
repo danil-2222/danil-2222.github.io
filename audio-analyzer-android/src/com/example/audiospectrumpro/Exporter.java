@@ -46,6 +46,17 @@ final class Exporter {
         return t.location;
     }
 
+    /** Saves any text (the lab journal) as a CSV file in Downloads. */
+    static String saveText(Context ctx, String prefix, String text) throws IOException {
+        String name = prefix + "_" + stamp() + ".csv";
+        Target t = open(ctx, name, "text/csv", Uri.parse("content://media/external/downloads"), Environment.DIRECTORY_DOWNLOADS);
+        Writer w = new OutputStreamWriter(t.out, "UTF-8");
+        w.write(text);
+        w.close();
+        t.finish(ctx);
+        return t.location;
+    }
+
     static String savePng(Context ctx, Bitmap bmp) throws IOException {
         String name = "spectrum_" + stamp() + ".png";
         Target t = open(ctx, name, "image/png", MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
