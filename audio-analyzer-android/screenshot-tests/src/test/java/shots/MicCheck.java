@@ -659,6 +659,7 @@ public class MicCheck {
                 "пролетіли " + call(plane, "score", new Class<?>[]{}) + ", аварія: " + call(plane, "crashed", new Class<?>[]{}));
         // Silence: the plane must fall.
         mic(silence(2), true);
+        run(400);                                      // queued frames with the voice go through first
         call(plane, "start", new Class<?>[]{});
         float y0 = (Float) call(plane, "planeY", new Class<?>[]{});
         run(1500);
