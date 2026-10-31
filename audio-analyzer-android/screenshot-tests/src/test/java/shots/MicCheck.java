@@ -1822,4 +1822,40 @@ public class MicCheck {
         check("Естафета історії", ok1 && ok2 && ok3, sb.toString());
         System.out.println("REPORT19\n" + String.join("\n", report));
     }
+
+    @Test
+    public void echoSpeed() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 64);
+        Object e = get(a, "echoSpeed");
+        double c = 331.3 + 0.606 * 17;                                 // 17 °C
+        double[] dist = {0.5, 0.5, 1.0, 1.5};
+        Random r = new Random(3);
+        for (double d : dist) {
+            setField(e, "distance", (float) d);
+            mic(silence(1), true);
+            run(200);
+            call(e, "measure", new Class<?>[]{});
+            double t0 = 0.12 + r.nextDouble() * 0.1;                    // speaker latency, unknown to the app
+            float[] x = mix(noise(1.2, 0.004f), silence(1.2));
+            chirpAt(x, t0, 0.8f);                                      // own chirp, straight into the mic
+            chirpAt(x, t0 + 0.0012, 0.3f);                              // the table
+            chirpAt(x, t0 + 2 * d / c + 0.0004, (float) (0.12 / d));    // the wall (a little offset: mic not at the speaker)
+            chirpAt(x, t0 + 2 * d / c + 0.004, (float) (0.05 / d));     // floor/ceiling path
+            mic(x, false);
+            run(1500);
+        }
+        shot(a, "99_echo_speed");
+        int n = (Integer) call(e, "count", new Class<?>[]{});
+        double sp = (Double) call(e, "speed", new Class<?>[]{});
+        double t = (sp - 331.3) / 0.606;
+        check("Швидкість звуку однією рукою", n == 4 && Math.abs(sp - c) < 1.5,
+                String.format("вимірів %d, c = %.1f м/с (правда %.1f), T = %.1f °C (правда 17)", n, sp, c, t));
+        System.out.println("REPORT20\n" + String.join("\n", report));
+    }
 }

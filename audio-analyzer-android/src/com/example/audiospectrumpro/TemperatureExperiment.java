@@ -85,7 +85,7 @@ final class TemperatureExperiment implements LessonView {
         return out;
     }
 
-    private static float[] chirpQuadrature(int rate) {
+    static float[] chirpQuadrature(int rate) {
         int n = Math.round(CHIRP_S * rate);
         float[] out = new float[n];
         for (int i = 0; i < n; i++) {
@@ -98,7 +98,7 @@ final class TemperatureExperiment implements LessonView {
     }
 
     /** Sound to emit: the chirp with short silence around it, at the loudspeaker rate. */
-    private static float[] chirpSound() {
+    static float[] chirpSound() {
         float[] c = chirp(OUT_RATE);
         float[] out = new float[c.length + OUT_RATE / 5];
         for (int i = 0; i < c.length; i++) out[OUT_RATE / 20 + i] = 0.9f * c[i];

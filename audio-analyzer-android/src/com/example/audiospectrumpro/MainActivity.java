@@ -1037,6 +1037,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
             {6, 49, "Ритм-дуель (1–5 телефонів)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
+            {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2466,6 +2467,40 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "оббігло коло. Кожен телефон слухає лише свого попередника — тому повідомлення йде саме по колу.";
     }
 
+    private EchoSpeedExperiment echoSpeed;
+
+    private String lessonEchoSpeed() {
+        ensureLive(0);
+        stopBuffer();
+        if (echoSpeed == null) {
+            echoSpeed = new EchoSpeedExperiment(density(), new EchoSpeedExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final EchoSpeedExperiment e = echoSpeed;
+        viz2d.showLesson(e);
+        dynSlider("Відстань до стіни: %.2f м", "echo_dist", 76, 16, new Value() {
+            @Override public float of(int p) { return 0.2f + 0.05f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { e.distance = 0.2f + 0.05f * p; }
+        });
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "📏 Виміряти", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.measure(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "Стерти", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.clear(); viz2d.invalidate(); }
+        });
+        return "Потрібні лише телефон, рулетка і рівна стіна (шафа, двері). Тримайте телефон низом (там динамік і "
+                + "мікрофон) до стіни, виставте відстань повзунком і натисніть «Виміряти». Телефон пікне і почує спершу "
+                + "свій пік, а потім — луну від стіни. На «ехограмі» видно обидва.\n\n"
+                + "Луна пролетіла до стіни і назад — 2·d. Зробіть виміри на 0,5 м, 1 м і 1,5 м: що далі стіна, то пізніше "
+                + "луна, рівно на 2/c секунди на кожен метр. Застосунок проведе пряму через точки, і з її нахилу вийде "
+                + "швидкість звуку (≈343 м/с при 20 °C), а з неї — температура.\n\n"
+                + "Порада: стійте в тиші, далеко від інших предметів; кілька вимірів на кожній відстані роблять результат точнішим.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2802,6 +2837,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 61: text = lessonSpy(); break;
             case 62: text = lessonCowboy(); break;
             case 63: text = lessonRelay(); break;
+            case 64: text = lessonEchoSpeed(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
