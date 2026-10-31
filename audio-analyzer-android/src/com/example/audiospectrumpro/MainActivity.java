@@ -1038,6 +1038,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {6, 49, "Ритм-дуель (1–2 телефони)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
+            {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2042,6 +2043,37 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "однаково, ~10 см від рота. Не більше 20 секунд за раз, між спробами відпочивайте — щоб не паморочилось.";
     }
 
+    private MusicPauseGame musicPause;
+
+    private String lessonMusicPause() {
+        ensureLive(0);
+        stopBuffer();
+        if (musicPause == null) {
+            musicPause = new MusicPauseGame(density(), new MusicPauseGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final MusicPauseGame g = musicPause;
+        viz2d.showLesson(g);
+        dynSpinner("Хто я", MusicPauseGame.ROLES, g.role, new OnPick() {
+            @Override public void pick(int i) { g.role = i; viz2d.invalidate(); }
+        });
+        Button go = dynButton(dyn, "▶ Почати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Гра для компанії з кількома телефонами. Один телефон — ведучий: він грає музику, яка раптово замовкає "
+                + "(5 раундів). Кожен гравець бере свій телефон, обирає свій номер (1–5, у всіх різні) і тисне «Почати» "
+                + "ДО того, як ведучий запустить музику.\n\n"
+                + "Щойно музика замовкла — закрийте пальцем мікрофон (отвір унизу телефона). Телефон міряє вашу реакцію "
+                + "від миті, коли САМ почув паузу, тож не важливо, хто стоїть ближче. Закрили, поки музика ще грає, — "
+                + "фальстарт (+0,4 с штрафу).\n\n"
+                + "Наприкінці ведучий подає звуковий сигнал, і телефони по черзі «пропищать» свої результати — у кожного "
+                + "з'явиться загальна таблиця. Тримайте телефони поруч і не шуміть ці 15 секунд.\n\n"
+                + "Немає друзів поруч? Оберіть «Тренування» — телефон сам грає музику і сам міряє реакцію.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2366,6 +2398,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 49: text = lessonDuel(); break;
             case 50: text = lessonTemperature(); break;
             case 51: text = lessonWind(); break;
+            case 52: text = lessonMusicPause(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

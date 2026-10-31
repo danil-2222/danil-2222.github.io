@@ -112,4 +112,125 @@ final class LessonKit {
     }
 
     static float midiToHz(float midi) { return (float) (440 * Math.pow(2, (midi - 69) / 12.0)); }
+
+    /**
+     * Like SampleTap, but never loses time: if frames were skipped for longer than one analysis window,
+     * the missing stretch comes back as silence, so counting samples is an exact clock.
+     */
+    static final class GaplessTap {
+        private long last = -1;
+
+        float[] take(AudioEngine.Frame f) {
+            if (f.tape != null) { last = f.index; return new float[0]; }
+            long missed = last < 0 ? 1 : f.index - last;
+            last = f.index;
+            if (missed <= 0) return new float[0];
+            long want = missed * AudioEngine.HOP;
+            int have = (int) Math.min(f.time.length, want);
+            int gap = (int) Math.min(want - have, f.sampleRate * 2L);
+            float[] out = new float[gap + have];
+            System.arraycopy(f.time, f.time.length - have, out, gap, have);
+            return out;
+        }
+    }
+
+    /** Feeds a stream in exact 10 ms blocks; the callback gets the block and its start time in ms. */
+    static final class Blocks {
+        interface Sink { void block(float[] x, int off, int n, int rate, float timeMs); }
+
+        private final GaplessTap tap = new GaplessTap();
+        private float[] carry = new float[0];
+        private long samples;
+        private int rate = 48000;
+
+        float nowMs() { return samples * 1000f / rate; }
+
+        void feed(AudioEngine.Frame f, Sink sink) {
+            rate = f.sampleRate;
+            float[] fresh = tap.take(f);
+            if (fresh.length == 0) return;
+            int n = rate / 100;
+            float[] buf = new float[carry.length + fresh.length];
+            System.arraycopy(carry, 0, buf, 0, carry.length);
+            System.arraycopy(fresh, 0, buf, carry.length, fresh.length);
+            int off = 0;
+            for (; off + n <= buf.length; off += n) {
+                sink.block(buf, off, n, rate, samples * 1000f / rate);
+                samples += n;
+            }
+            carry = java.util.Arrays.copyOfRange(buf, off, buf.length);
+        }
+    }
+
+    /** Level in dB of block energy (mean square). */
+    static float blockDb(float[] x, int off, int n) {
+        double e = 0;
+        for (int i = 0; i < n; i++) e += x[off + i] * x[off + i];
+        return (float) (10 * Math.log10(e / n + 1e-14));
+    }
+
+    /** Level in dB (re a full-scale sine) of one frequency in a block. */
+    static float toneDb(float[] x, int off, int n, double hz, int rate) {
+        double p = goertzel(x, off, n, hz, rate);
+        return (float) (10 * Math.log10(p / ((double) n * n / 4) + 1e-14));
+    }
+
+    /**
+     * "Finger on the microphone" detector: the phone plays its own quiet carrier tone and listens to it;
+     * a sudden drop means the microphone is covered. Feed it every 10 ms block.
+     */
+    static final class CoverDetector {
+        float carrierHz;
+        float baseDb = -200, levelDb = -200;
+        boolean covered, heard;
+
+        CoverDetector(float hz) { carrierHz = hz; }
+
+        void reset() { baseDb = -200; covered = false; heard = false; }
+
+        /** @return +1 when the microphone has just been covered, -1 when released, 0 otherwise. */
+        int block(float[] x, int off, int n, int rate) {
+            levelDb = toneDb(x, off, n, carrierHz, rate);
+            if (!heard) {
+                if (levelDb > -55) { heard = true; baseDb = levelDb; }
+                return 0;
+            }
+            if (!covered) baseDb = levelDb > baseDb ? levelDb : baseDb * 0.995f + levelDb * 0.005f;
+            if (!covered && levelDb < baseDb - 9) { covered = true; return 1; }
+            if (covered && levelDb > baseDb - 4) { covered = false; return -1; }
+            return 0;
+        }
+    }
+
+    /** Continuous carrier tone (a whole number of periods, so it loops without clicks). */
+    static float[] carrierLoop(float hz, float amp, int rate) {
+        int periods = Math.round(hz);                      // one second
+        int n = rate;
+        float[] out = new float[n];
+        for (int i = 0; i < n; i++) out[i] = (float) (amp * Math.sin(2 * Math.PI * periods * i / rate));
+        return out;
+    }
+
+    /** Mixes src into dst at offset. */
+    static void mixIn(float[] dst, float[] src, int off, float gain) {
+        for (int i = 0; i < src.length && off + i < dst.length; i++) if (off + i >= 0) dst[off + i] += src[i] * gain;
+    }
+
+    /** A cheerful random pentatonic tune (melody + bass), duration in seconds. */
+    static float[] tune(double seconds, long seed, int rate) {
+        java.util.Random r = new java.util.Random(seed);
+        int total = (int) (seconds * rate);
+        float[] out = new float[total];
+        int[] scale = {60, 62, 64, 67, 69, 72, 74, 76};
+        int step = rate / 4, i = 0, note = 3;
+        for (int at = 0; at < total; at += step, i++) {
+            note = Math.max(0, Math.min(scale.length - 1, note + r.nextInt(5) - 2));
+            addNote(out, at, Math.min(step * 2, total - at), midiToHz(scale[note]), 0.5f, rate);
+            if (i % 4 == 0) addNote(out, at, Math.min(step * 4, total - at), midiToHz(scale[(i / 4) % 3 == 2 ? 3 : 0] - 24), 0.4f, rate);
+        }
+        int fade = rate / 50;
+        for (int k = 0; k < fade && k < total; k++) out[total - 1 - k] *= (float) k / fade;
+        normalize(out, 0.6f);
+        return out;
+    }
 }

@@ -993,4 +993,122 @@ public class MicCheck {
                 String.format("переможець — гравець %d (Богдан дмухав сильніше й рівніше)", rank[0]));
         System.out.println("REPORT7\n" + String.join("\n", report));
     }
+
+    static float[] modem(String text, float gain) throws Exception {
+        float[] m = (float[]) staticCall("ModemLesson", "encode", new Class<?>[]{String.class, int.class}, text, RATE);
+        for (int i = 0; i < m.length; i++) m[i] *= gain;
+        return m;
+    }
+
+    /** What a player's microphone hears: the host's music from afar, its own carrier and the finger on it. */
+    static float[] pauseScene(long seed, double[] reactMs, double falseStartAtS, boolean withEnd, float carrierHz) throws Exception {
+        float[] track = (float[]) staticCall("MusicPauseGame", "soundtrack", new Class<?>[]{long.class}, seed);
+        float[] sched = (float[]) staticCall("MusicPauseGame", "schedule", new Class<?>[]{long.class}, seed);
+        float[] end = modem("END", 1f);
+        int trackLen = withEnd ? track.length : track.length - end.length;
+        double t0 = 1.0;
+        float[] x = new float[(int) ((t0 + 25) * RATE) + trackLen];
+        for (int i = 0; i < trackLen; i++) x[(int) (t0 * RATE) + i] += 0.3f * track[i];
+        float[] gainC = new float[x.length];
+        java.util.Arrays.fill(gainC, 1f);
+        double at = t0;
+        for (int r = 0; r < sched.length; r++) {
+            double stop = at + sched[r];
+            int c0 = (int) ((stop + reactMs[r] / 1000) * RATE);
+            for (int i = c0; i < c0 + RATE / 2; i++) gainC[i] = 0.12f;
+            at = stop + 3.2;
+        }
+        if (falseStartAtS > 0) {
+            int c0 = (int) ((t0 + falseStartAtS) * RATE);
+            for (int i = c0; i < c0 + (int) (0.3 * RATE); i++) gainC[i] = 0.12f;
+        }
+        for (int i = 0; i < x.length; i++) {
+            x[i] += gainC[i] * 0.12f * (float) Math.sin(2 * Math.PI * carrierHz * i / RATE);
+            x[i] *= gainC[i] < 1 ? 0.5f : 1f;                  // finger also muffles everything else
+        }
+        return x;
+    }
+
+    static void waitState(Object g, String st, long maxMs) throws Exception {
+        long until = System.currentTimeMillis() + maxMs;
+        while (System.currentTimeMillis() < until && !st.equals(call(g, "state", new Class<?>[]{}))) run(250);
+    }
+
+    @Test
+    public void musicPause() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 52);
+        Object g = get(a, "musicPause");
+        long seed = 5;
+        float[] sched = (float[]) staticCall("MusicPauseGame", "schedule", new Class<?>[]{long.class}, seed);
+        double[] react = {250, 410, 180, 330, 600};
+        double falseAt = 0;
+        for (int r = 0; r < 2; r++) falseAt += sched[r] + 3.2;
+        falseAt += 2.0;                                    // round 3, two seconds into the music
+
+        // Player 2: music from the host, finger on the microphone, then everyone's results by sound.
+        setField(g, "role", 2);
+        call(g, "start", new Class<?>[]{});
+        float[] scene = pauseScene(seed, react, falseAt, true, 17100);
+        float[] track = (float[]) staticCall("MusicPauseGame", "soundtrack", new Class<?>[]{long.class}, seed);
+        int endAt = (int) ((1.0 + track.length / (double) RATE) * RATE);
+        float[] p1 = modem("P1:512:0", 0.3f), p3 = modem("P3:298:2", 0.3f);
+        for (int i = 0; i < p1.length; i++) scene[endAt + (int) (0.9 * RATE) + i] += p1[i];
+        for (int i = 0; i < p3.length; i++) scene[endAt + (int) (6.9 * RATE) + i] += p3[i];
+        mic(scene, false);
+        long until = System.currentTimeMillis() + 120000;
+        boolean shotPlaying = false;
+        while (System.currentTimeMillis() < until && !"TABLE".equals(call(g, "state", new Class<?>[]{}))) {
+            run(250);
+            List<?> rs = (List<?>) call(g, "reactions", new Class<?>[]{});
+            if (!shotPlaying && rs.size() == 2) { shot(a, "99_pause_player"); shotPlaying = true; }
+        }
+        shot(a, "99_pause_table");
+        List<?> rs = (List<?>) call(g, "reactions", new Class<?>[]{});
+        StringBuilder sb = new StringBuilder();
+        boolean ok = rs.size() == 5;
+        for (int i = 0; i < rs.size(); i++) {
+            float v = (Float) rs.get(i);
+            sb.append(String.format("%.0f/%.0f ", v, react[i]));
+            ok &= Math.abs(v - react[i]) <= 40;
+        }
+        Map<?, ?> res = (Map<?, ?>) call(g, "results", new Class<?>[]{});
+        int fs = (Integer) call(g, "falseStarts", new Class<?>[]{});
+        check("Музична пауза: реакція гравця", ok && fs == 1, "виміряно/задано мс: " + sb + "фальстартів " + fs);
+        check("Музична пауза: обмін результатами", "TABLE".equals(call(g, "state", new Class<?>[]{})) && res.size() == 3
+                        && "512:0".equals(res.get(1)) && "298:2".equals(res.get(3)),
+                "таблиця: " + res);
+
+        // Host: hears the END signal and the players' results.
+        setField(g, "role", 0);
+        mic(silence(1), true);
+        run(300);
+        call(g, "start", new Class<?>[]{});
+        float[] end = modem("END", 0.5f);
+        mic(concat(silence(1), end, silence(0.9), modem("P1:512:0", 0.3f), silence(1.5), modem("P2:731:1", 0.3f),
+                silence(1.5), modem("P3:298:2", 0.3f), silence(12)), false);
+        waitState(g, "TABLE", 60000);
+        res = (Map<?, ?>) call(g, "results", new Class<?>[]{});
+        List<?> rank = (List<?>) call(g, "ranking", new Class<?>[]{});
+        shot(a, "99_pause_host");
+        check("Музична пауза: таблиця ведучого", res.size() == 3 && ((int[]) rank.get(0))[0] == 3 && ((int[]) rank.get(2))[0] == 2,
+                "отримано " + res + ", переможець — гравець " + ((int[]) rank.get(0))[0]);
+
+        // Training on one phone: same scene without the END signal.
+        setField(g, "role", 6);
+        mic(silence(1), true);
+        run(300);
+        call(g, "start", new Class<?>[]{});
+        mic(pauseScene(seed, react, 0, false, 16800), false);
+        waitState(g, "TABLE", 90000);
+        rs = (List<?>) call(g, "reactions", new Class<?>[]{});
+        check("Музична пауза: тренування", "TABLE".equals(call(g, "state", new Class<?>[]{})) && rs.size() == 5,
+                "раундів " + rs.size() + ": " + rs);
+        System.out.println("REPORT8\n" + String.join("\n", report));
+    }
 }
