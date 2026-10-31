@@ -718,4 +718,85 @@ public class MicCheck {
                 String.format("розмова %.2f, далеко %.2f, близько %.2f", talk, cold, hot));
         System.out.println("REPORT4\n" + String.join("\n", report));
     }
+
+    static Object sf(Class<?> c, String name) throws Exception {
+        Field f = c.getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(null);
+    }
+
+    /** What a phone's microphone hears during the duel: its own carrier (after latency), dipping when covered. */
+    static float[] carrierPerformance(float carrierHz, float latencyMs, int[] skip, Random r) throws Exception {
+        Class<?> dg = Class.forName("com.example.audiospectrumpro.DuelGame");
+        float[] hits = (float[]) sf(dg, "HITS");
+        int lead = (Integer) sf(dg, "LEAD_BEATS"), beats = (Integer) sf(dg, "SONG_BEATS");
+        float beat = (Float) sf(dg, "BEAT_MS");
+        int n = (int) (((lead + beats) * beat + 800 + latencyMs) / 1000 * RATE);
+        float[] x = new float[n];
+        int start = (int) (latencyMs / 1000 * RATE);
+        float[] gain = new float[n];
+        java.util.Arrays.fill(gain, 1f);
+        java.util.Set<Integer> skipped = new java.util.HashSet<>();
+        for (int sk : skip) skipped.add(sk);
+        for (int i = 0; i < hits.length; i++) {
+            if (skipped.contains(i)) continue;
+            float t = (lead + hits[i]) * beat + latencyMs + (r.nextFloat() - 0.5f) * 60;      // ±30 ms human error
+            int a = (int) (t / 1000 * RATE), b = a + (int) (0.15f * RATE);
+            for (int j = Math.max(0, a); j < Math.min(n, b); j++) gain[j] = 0.08f;          // finger: about -22 dB
+        }
+        for (int i = start; i < n; i++) {
+            x[i] = (float) (0.12 * gain[i] * Math.sin(2 * Math.PI * carrierHz * i / RATE)) + (r.nextFloat() - 0.5f) * 0.01f;
+        }
+        return x;
+    }
+
+    @Test
+    public void rhythmDuel() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        Random r = new Random(8);
+        Class<?> roleCls = Class.forName("com.example.audiospectrumpro.DuelGame$Role");
+
+        // Solo: 34 of 37 notes hit with a 150 ms phone latency.
+        mic(silence(1), true);
+        lesson(a, 49);
+        Object g = get(a, "duelGame");
+        Field role = g.getClass().getDeclaredField("role"); role.setAccessible(true);
+        role.set(g, Enum.valueOf((Class) roleCls, "SOLO"));
+        float[] perf = carrierPerformance(17000, 150, new int[]{5, 17, 30}, r);
+        call(g, "start", new Class<?>[]{});
+        mic(concat(perf, silence(2)), false);
+        run(perf.length * 1000L / RATE + 1500);
+        shot(a, "99_duel_solo");
+        int perfect = (Integer) call(g, "perfect", new Class<?>[]{});
+        int good = (Integer) get(g, "good"), miss = (Integer) get(g, "miss"), extra = (Integer) get(g, "extra");
+        float lat = (Float) get(g, "latencyMs");
+        check("Ритм-дуель наодинці", "RESULT".equals(call(g, "state", new Class<?>[]{})) && perfect + good == 34 && miss == 3 && extra == 0,
+                String.format("ідеально %d, добре %d, мимо %d, зайвих %d, очки %d, затримка %.0f мс", perfect, good, miss, extra,
+                        (Integer) call(g, "score", new Class<?>[]{}), lat));
+
+        // Two phones, seen from player 2: start signal, the song, then player 1's score arrives as sound.
+        role.set(g, Enum.valueOf((Class) roleCls, "PLAYER2"));
+        mic(silence(1), true);
+        run(300);
+        call(g, "start", new Class<?>[]{});
+        float[] go = (float[]) staticCall("ModemLesson", "encode", new Class<?>[]{String.class, int.class}, "GO", RATE);
+        float[] p1 = (float[]) staticCall("ModemLesson", "encode", new Class<?>[]{String.class, int.class}, "P1:2950", RATE);
+        for (int i = 0; i < go.length; i++) go[i] *= 0.5f;
+        for (int i = 0; i < p1.length; i++) p1[i] *= 0.5f;
+        float[] perf2 = carrierPerformance(18200, 220, new int[]{}, r);
+        mic(concat(silence(0.5), go, silence(0.25), perf2, silence(1), p1, silence(9)), false);
+        long until = System.currentTimeMillis() + 50000;
+        while (System.currentTimeMillis() < until && !"RESULT".equals(call(g, "state", new Class<?>[]{}))) run(200);
+        shot(a, "99_duel_two_phones");
+        check("Ритм-дуель удвох (гравець 2)", "RESULT".equals(call(g, "state", new Class<?>[]{}))
+                        && (Integer) call(g, "opponent", new Class<?>[]{}) == 2950 && (Integer) call(g, "perfect", new Class<?>[]{}) + (Integer) get(g, "good") == 37,
+                String.format("старт за сигналом ✓, влучань %d з 37, мій рахунок %d, рахунок друга %d, затримка %.0f мс",
+                        (Integer) call(g, "perfect", new Class<?>[]{}) + (Integer) get(g, "good"), (Integer) call(g, "score", new Class<?>[]{}),
+                        (Integer) call(g, "opponent", new Class<?>[]{}), (Float) get(g, "latencyMs")));
+        System.out.println("REPORT5\n" + String.join("\n", report));
+    }
 }

@@ -86,6 +86,14 @@ final class ModemLesson implements LessonView {
         java.util.Arrays.fill(history, SYM_NONE);
     }
 
+    /** The last message that arrived with a correct checksum, or null. */
+    String receivedText() { return receivedOk && !received.isEmpty() ? received : null; }
+
+    void clearReceived() {
+        received = "";
+        receivedOk = false;
+    }
+
     void reset() {
         receiving = false;
         nibbles.clear();

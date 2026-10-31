@@ -29,7 +29,7 @@ final class SimonGame implements LessonView {
     private final List<Integer> seq = new ArrayList<>();
     private State state = State.IDLE;
     private int pos, best;
-    private float clockMs, stateUntil, heldMs = 0;
+    private float clockMs, stateUntil, heldMs = 0, silentMs;
     private int heldPad = -1, litPad = -1;
     private boolean released = true;
 
@@ -97,11 +97,13 @@ final class SimonGame implements LessonView {
             if (Math.abs(midi - Math.round(midi)) < 0.4f) for (int i = 0; i < 4; i++) if (PITCH_CLASS[i] == pc) pad = i;
         }
         if (pad < 0) {
-            heldMs = Math.max(0, heldMs - dt);
-            if (heldMs == 0) { released = true; heldPad = -1; }
+            // A short break (0.1 s) is enough to sing the same note again.
+            silentMs += dt;
+            if (silentMs >= 100) { released = true; heldPad = -1; heldMs = 0; }
             litPad = -1;
             return;
         }
+        silentMs = 0;
         if (pad != heldPad) { heldPad = pad; heldMs = 0; released = true; }   // moving to another note
         heldMs = Math.min(400, heldMs + dt);
         litPad = pad;

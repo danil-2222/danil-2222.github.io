@@ -1033,6 +1033,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 14, "Звуковий модем", "Передайте текст звуком між телефонами"},
             {5, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
+            {6, 49, "Ритм-дуель (1–2 телефони)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -1918,6 +1919,40 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         }
     }
 
+    private DuelGame duelGame;
+
+    private String lessonDuel() {
+        ensureLive(0);
+        stopBuffer();
+        if (duelGame == null) {
+            duelGame = new DuelGame(density(), new DuelGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final DuelGame g = duelGame;
+        viz2d.showLesson(g);
+        dynSpinner("Хто я", new String[]{"Граю сам", "Гравець 1 (починає)", "Гравець 2 (чекає на старт)"}, g.role.ordinal(),
+                new OnPick() {
+                    @Override public void pick(int i) { g.role = DuelGame.Role.values()[i]; viz2d.invalidate(); }
+                });
+        dynSpinner("Тон-«кнопка»", new String[]{"Майже нечутний (17–18 кГц)", "Чутний (якщо телефон не реагує)"}, g.audible ? 1 : 0,
+                new OnPick() {
+                    @Override public void pick(int i) { g.audible = i == 1; }
+                });
+        Button go = dynButton(dyn, "▶ Почати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Музика грає, мітки біжать до білої лінії. Коли мітка на лінії — закрийте пальцем мікрофон (отвір унизу "
+                + "телефона) і відпустіть. Ідеально — 100 очок, добре — 50, серія з п'яти влучань подвоює очки.\n\n"
+                + "Як це працює: телефон грає ще й тихий високий тон і весь час слухає його своїм мікрофоном. Палець "
+                + "приглушує тон — це і є «натискання». Затримку динаміка й мікрофона застосунок вимірює сам.\n\n"
+                + "Удвох: покладіть телефони поруч. Другий гравець обирає «Гравець 2» і тисне «Почати» — телефон чекає. "
+                + "Перший гравець тисне «Почати»: його телефон звуком дає сигнал старту, і обидва починають разом. "
+                + "Наприкінці телефони звуком обмінюються рахунками — і кожен покаже, хто переміг.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2239,6 +2274,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 31: text = lessonRange(); break;
             case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: text = lessonSimple(n); break;
             case 40: text = lessonParrot(); break;
+            case 49: text = lessonDuel(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
