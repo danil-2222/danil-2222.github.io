@@ -1034,6 +1034,14 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
+            {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
+            {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
+            {6, 43, "Не розбуди дракона", "Крадіть монети в повній тиші"},
+            {6, 44, "Повтори мелодію", "Чотири ноти, щораз довша послідовність"},
+            {6, 45, "Голосовий літачок", "Висота голосу керує польотом"},
+            {6, 46, "Відлуння ритму", "Почуйте оплески — повторіть"},
+            {6, 47, "Хто гучніший", "Змагання на крик для компанії"},
+            {6, 48, "Тепло — холодно", "Знайдіть схований телефон за писком"},
             {6, 21, "Тренажер ритму", "Плескайте під метроном — мілісекунди точності"},
     };
 
@@ -1777,6 +1785,139 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         }
     }
 
+    private CandlesGame candlesGame;
+    private GlassGame glassGame;
+    private DragonGame dragonGame;
+    private SimonGame simonGame;
+    private PlaneGame planeGame;
+    private RhythmEchoGame echoGame;
+    private LoudGame loudGame;
+    private HotColdGame hotColdGame;
+
+
+    private String lessonGame(int n) {
+        ensureLive(0);
+        stopBuffer();
+        float d = density();
+        switch (n) {
+            case 41: {
+                if (candlesGame == null) candlesGame = new CandlesGame(d);
+                candlesGame.reset();
+                viz2d.showLesson(candlesGame);
+                dynButton(dyn, "🎂 Нові свічки", new View.OnClickListener() {
+                    @Override public void onClick(View v) { candlesGame.reset(); }
+                });
+                return "Задуйте всі свічки на торті! Дмухайте прямо в мікрофон — він унизу телефона. Свист чи голос не "
+                        + "рахуються: застосунок відрізняє видих (шум без висоти, багато низького «гулу» від потоку повітря) "
+                        + "від інших звуків. Чим сильніший видих — тим швидше гаснуть свічки.";
+            }
+            case 42: {
+                if (glassGame == null) {
+                    glassGame = new GlassGame(d, new GlassGame.Sound() {
+                        @Override public void play(float[] pcm) { playBuffer(pcm, false); }
+                    });
+                } else {
+                    glassGame.newGlass();
+                }
+                viz2d.showLesson(glassGame);
+                LinearLayout row = dynRow();
+                dynButton(row, "🔔 Постукати по склянці", new View.OnClickListener() {
+                    @Override public void onClick(View v) { glassGame.ping(); }
+                });
+                dynButton(row, "🥛 Нова склянка", new View.OnClickListener() {
+                    @Override public void onClick(View v) { glassGame.newGlass(); }
+                });
+                return "Кожна склянка має свою ноту — постукайте, щоб почути. Заспівайте цю ноту (можна в будь-якій "
+                        + "октаві) і тримайте рівно 2 секунди: склянка розгойдуватиметься все сильніше і трісне.\n\n"
+                        + "Це резонанс: маленькі поштовхи точно в такт складаються в великі коливання. Так справжні співаки "
+                        + "розбивають келихи, а солдати не крокують в ногу по мостах.";
+            }
+            case 43: {
+                if (dragonGame == null) dragonGame = new DragonGame(d);
+                dragonGame.reset();
+                viz2d.showLesson(dragonGame);
+                dynButton(dyn, "🐉 Нова гра", new View.OnClickListener() {
+                    @Override public void onClick(View v) { dragonGame.reset(); }
+                });
+                return "Дракон спить на скарбах. Торкайтеся екрана, щоб красти монети, але не шуміть: застосунок спершу "
+                        + "слухає, яка в кімнаті тиша, і будь-який звук гучніший за неї розбудить дракона. "
+                        + "Грайте компанією: хто перший засміявся — програв!";
+            }
+            case 44: {
+                if (simonGame == null) {
+                    simonGame = new SimonGame(d, new SimonGame.Sound() {
+                        @Override public void play(float[] pcm) { playBuffer(pcm, false); }
+                    });
+                }
+                viz2d.showLesson(simonGame);
+                dynButton(dyn, "▶ Почати", new View.OnClickListener() {
+                    @Override public void onClick(View v) { simonGame.start(); }
+                });
+                return "Застосунок зіграє кольорові ноти: до, мі, соль, ля. Повторіть їх голосом або свистом по черзі — "
+                        + "будь-якою октавою. Кожного раунду додається ще одна нота. Скільки запам'ятаєте?\n\n"
+                        + "Між однаковими нотами поспіль зробіть коротку паузу.";
+            }
+            case 45: {
+                if (planeGame == null) planeGame = new PlaneGame(d);
+                viz2d.showLesson(planeGame);
+                dynSpinner("Мій голос", new String[]{"Низький (чоловічий)", "Високий (жіночий, дитячий)"},
+                        planeGame.centerMidi > 56 ? 1 : 0, new OnPick() {
+                            @Override public void pick(int i) { planeGame.centerMidi = i == 0 ? 52 : 62; }
+                        });
+                dynButton(dyn, "▶ Старт", new View.OnClickListener() {
+                    @Override public void onClick(View v) { planeGame.start(); }
+                });
+                return "Тягніть голосом «у-у-у»: вище нота — літачок піднімається, нижче — опускається, замовкнете — падає. "
+                        + "Пролітайте в проміжки між горами. Біла крапка показує, куди «тягне» ваш голос.";
+            }
+            case 46: {
+                if (echoGame == null) {
+                    echoGame = new RhythmEchoGame(d, new RhythmEchoGame.Sound() {
+                        @Override public void play(float[] pcm) { playBuffer(pcm, false); }
+                    });
+                }
+                viz2d.showLesson(echoGame);
+                LinearLayout row = dynRow();
+                dynButton(row, "▶ Послухати ритм", new View.OnClickListener() {
+                    @Override public void onClick(View v) { echoGame.play(); }
+                });
+                dynButton(row, "Рівень 1", new View.OnClickListener() {
+                    @Override public void onClick(View v) { echoGame.level = 0; viz2d.invalidate(); }
+                });
+                return "Телефон проплескає ритм — повторіть його оплесками. Важливі проміжки між оплесками: похибка до "
+                        + "0,1 секунди зараховується. Кожен рівень — складніший ритм.";
+            }
+            case 47: {
+                if (loudGame == null) loudGame = new LoudGame(d);
+                viz2d.showLesson(loudGame);
+                LinearLayout row = dynRow();
+                dynButton(row, "📣 Хід гравця", new View.OnClickListener() {
+                    @Override public void onClick(View v) { loudGame.startTurn(); }
+                });
+                dynButton(row, "Нова гра", new View.OnClickListener() {
+                    @Override public void onClick(View v) { loudGame.newGame(); viz2d.invalidate(); }
+                });
+                return "Гравці по черзі тримають телефон на однаковій відстані від рота (наприклад, на витягнутій руці) "
+                        + "і натискають «Хід гравця». За 3 секунди зараховується найгучніша мить. Хто переможе?";
+            }
+            default: {
+                if (hotColdGame == null) hotColdGame = new HotColdGame(d);
+                final HotColdGame g = hotColdGame;
+                viz2d.showLesson(g);
+                dynSpinner("Цей телефон", new String[]{"Шукач (слухає)", "Маячок (ховаємо, пищить)"}, g.beacon ? 1 : 0, new OnPick() {
+                    @Override public void pick(int i) {
+                        g.beacon = i == 1;
+                        if (g.beacon) playBuffer(HotColdGame.beep(48000), true); else stopBuffer();
+                        viz2d.invalidate();
+                    }
+                });
+                return "Потрібно два телефони. Один — «маячок»: його ховають, і він тихо пищить на високій ноті. "
+                        + "Другий — «шукач»: ходіть з ним і дивіться на термометр. Шукач чує лише писк маячка й не реагує "
+                        + "на розмови, тож можна підказувати «тепло-холодно» голосом.";
+            }
+        }
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2098,6 +2239,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 31: text = lessonRange(); break;
             case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39: text = lessonSimple(n); break;
             case 40: text = lessonParrot(); break;
+            case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
                 select(R.id.spinSource, 0);

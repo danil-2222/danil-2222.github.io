@@ -541,4 +541,181 @@ public class MicCheck {
                 "повторено фраз: " + phrases + ", довжина відповіді " + String.format("%.2f с", said.length / (float) RATE));
         System.out.println("REPORT3\n" + String.join("\n", report));
     }
+
+    static float[] blowNoise(double sec, float amp) {
+        Random r = new Random(11);
+        float[] x = new float[(int) (sec * RATE)];
+        float lp = 0;
+        for (int i = 0; i < x.length; i++) {
+            float w = r.nextFloat() * 2 - 1;
+            lp = 0.995f * lp + 0.05f * w;                 // strong low rumble of air on the mic
+            x[i] = amp * (0.35f * w + 2.5f * lp);
+        }
+        return x;
+    }
+
+    static void waitFor(Object game, String state, long maxMs) throws Exception {
+        long end = System.currentTimeMillis() + maxMs;
+        while (System.currentTimeMillis() < end && !state.equals(call(game, "state", new Class<?>[]{}))) run(50);
+    }
+
+    static float hzOf(int midi) { return (float) (440 * Math.pow(2, (midi - 69) / 12.0)); }
+
+    @Test
+    public void games() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        Random r = new Random(5);
+
+        // 1. Candles: a voice does nothing, a blow puts them out.
+        mic(silence(1), true);
+        lesson(a, 41);
+        Object candles = get(a, "candlesGame");
+        mic(voice(200, 2, 0.3f), true);
+        run(2000);
+        int afterVoice = (Integer) call(candles, "lit", new Class<?>[]{});
+        mic(blowNoise(4, 0.25f), true);
+        run(4000);
+        shot(a, "98_g41_candles");
+        check("Гра «Задуй свічки»", afterVoice == 8 && (Integer) call(candles, "lit", new Class<?>[]{}) == 0,
+                "після голосу горить " + afterVoice + ", після видиху " + call(candles, "lit", new Class<?>[]{}));
+        back(a);
+
+        // 2. Glass: sing its note an octave down.
+        mic(silence(1), true);
+        lesson(a, 42);
+        Object glass = get(a, "glassGame");
+        int target = (Integer) call(glass, "targetMidi", new Class<?>[]{});
+        mic(voice(hzOf(target - 12), 4, 0.25f), true);
+        run(3500);
+        shot(a, "98_g42_glass");
+        check("Гра «Розбий склянку»", (Boolean) call(glass, "broken", new Class<?>[]{}), "нота склянки MIDI " + target + ", співали октавою нижче");
+        back(a);
+
+        // 3. Dragon: steal in silence, then a laugh wakes it.
+        mic(silence(1), true);
+        lesson(a, 43);
+        Object dragon = get(a, "dragonGame");
+        mic(noise(4, 0.0005f), true);
+        run(2500);
+        for (int i = 0; i < 3; i++) call(dragon, "steal", new Class<?>[]{});
+        boolean sleeping = !(Boolean) call(dragon, "awake", new Class<?>[]{});
+        mic(voice(250, 2, 0.2f), true);
+        run(1000);
+        shot(a, "98_g43_dragon");
+        check("Гра «Не розбуди дракона»", sleeping && (Integer) call(dragon, "coins", new Class<?>[]{}) == 3 && (Boolean) call(dragon, "awake", new Class<?>[]{}),
+                "монет " + call(dragon, "coins", new Class<?>[]{}) + ", прокинувся від голосу: " + call(dragon, "awake", new Class<?>[]{}));
+        back(a);
+
+        // 4. Simon: repeat two rounds.
+        mic(silence(1), true);
+        lesson(a, 44);
+        Object simon = get(a, "simonGame");
+        call(simon, "start", new Class<?>[]{});
+        int[] pcs = {0, 4, 7, 9};
+        for (int round = 0; round < 3; round++) {
+            waitFor(simon, "LISTENING", 8000);
+            @SuppressWarnings("unchecked") List<Integer> seq = new ArrayList<>((List<Integer>) call(simon, "sequence", new Class<?>[]{}));
+            float[] song = silence(0.2);
+            for (int note : seq) song = concat(song, voice(hzOf(48 + pcs[note]), 0.55, 0.25f), silence(0.35));
+            int before = (Integer) call(simon, "level", new Class<?>[]{});
+            mic(concat(song, silence(3)), false);
+            // Wait until the game has judged this round (level grows, or the game is lost).
+            long until = System.currentTimeMillis() + (song.length * 1000L / RATE) + 5000;
+            while (System.currentTimeMillis() < until && (Integer) call(simon, "level", new Class<?>[]{}) == before
+                    && !"LOST".equals(call(simon, "state", new Class<?>[]{}))) run(50);
+        }
+        shot(a, "98_g44_simon");
+        int lvl = (Integer) call(simon, "level", new Class<?>[]{});
+        check("Гра «Повтори мелодію»", lvl >= 4 && !"LOST".equals(call(simon, "state", new Class<?>[]{})),
+                "пройдено раундів: " + (lvl - 1) + ", стан " + call(simon, "state", new Class<?>[]{}));
+        back(a);
+
+        // 5. Plane: an autopilot sings the pitch of the next gap.
+        mic(silence(1), true);
+        lesson(a, 45);
+        Object plane = get(a, "planeGame");
+        call(plane, "start", new Class<?>[]{});
+        int center = (Integer) get(plane, "centerMidi");
+        long end = System.currentTimeMillis() + 22000;
+        while (System.currentTimeMillis() < end && !(Boolean) call(plane, "crashed", new Class<?>[]{})) {
+            float gap = (Float) call(plane, "nextGap", new Class<?>[]{});
+            float midi = center + (gap - 0.5f) * 14;
+            mic(voice(hzOf(Math.round(midi)) * Math.pow(2, (midi - Math.round(midi)) / 12), 1, 0.25f), true);
+            run(150);
+        }
+        shot(a, "98_g45_plane");
+        check("Гра «Голосовий літачок»", (Integer) call(plane, "score", new Class<?>[]{}) >= 5,
+                "пролетіли " + call(plane, "score", new Class<?>[]{}) + ", аварія: " + call(plane, "crashed", new Class<?>[]{}));
+        // Silence: the plane must fall.
+        mic(silence(2), true);
+        call(plane, "start", new Class<?>[]{});
+        float y0 = (Float) call(plane, "planeY", new Class<?>[]{});
+        run(1500);
+        check("Літачок падає в тиші", (Float) call(plane, "planeY", new Class<?>[]{}) < y0 - 0.2f, "висота " + y0 + " → " + call(plane, "planeY", new Class<?>[]{}));
+        back(a);
+
+        // 6. Rhythm echo: clap back two levels.
+        mic(silence(1), true);
+        lesson(a, 46);
+        Object echo = get(a, "echoGame");
+        for (int round = 0; round < 2; round++) {
+            call(echo, "play", new Class<?>[]{});
+            waitFor(echo, "LISTENING", 8000);
+            float[] pat = (float[]) call(echo, "pattern", new Class<?>[]{});
+            float total = 0;
+            for (float g : pat) total += g;
+            float[] cl = silence(0.6 + total * 0.5 + 3.2);
+            float t = 0.6f;
+            for (int i = 0; i <= pat.length; i++) {
+                burst(cl, (int) (t * RATE), 0.6f, 0.01, r);
+                if (i < pat.length) t += pat[i] * 0.5f + (r.nextFloat() - 0.5f) * 0.04f;   // a human is never exact
+            }
+            mic(cl, false);
+            waitFor(echo, "RESULT", 8000);
+            check("Гра «Відлуння ритму» раунд " + (round + 1), (Boolean) call(echo, "passed", new Class<?>[]{}), "оцінено: " + call(echo, "passed", new Class<?>[]{}));
+        }
+        shot(a, "98_g46_echo");
+        back(a);
+
+        // 7. Who is loudest.
+        mic(silence(1), true);
+        lesson(a, 47);
+        Object loud = get(a, "loudGame");
+        call(loud, "newGame", new Class<?>[]{});
+        mic(voice(220, 4, 0.05f), true);
+        call(loud, "startTurn", new Class<?>[]{});
+        run(3800);
+        mic(voice(260, 4, 0.4f), true);
+        call(loud, "startTurn", new Class<?>[]{});
+        run(3800);
+        shot(a, "98_g47_loud");
+        check("Гра «Хто гучніший»", (Integer) call(loud, "winner", new Class<?>[]{}) == 1,
+                "результати " + call(loud, "results", new Class<?>[]{}) + ", переміг гравець " + ((Integer) call(loud, "winner", new Class<?>[]{}) + 1));
+        back(a);
+
+        // 8. Hot and cold: the beacon gets closer; talking nearby does not count.
+        mic(silence(1), true);
+        lesson(a, 48);
+        Object hc = get(a, "hotColdGame");
+        float[] beep = (float[]) staticCall("HotColdGame", "beep", new Class<?>[]{int.class}, RATE);
+        float[] far = beep.clone(), near = beep.clone();
+        for (int i = 0; i < beep.length; i++) { far[i] *= 0.003f; near[i] *= 0.4f; }
+        mic(voice(150, 3, 0.3f), true);
+        run(1500);
+        float talk = (Float) call(hc, "heat", new Class<?>[]{});
+        mic(far, true);
+        run(2000);
+        float cold = (Float) call(hc, "heat", new Class<?>[]{});
+        mic(near, true);
+        run(2000);
+        float hot = (Float) call(hc, "heat", new Class<?>[]{});
+        shot(a, "98_g48_hotcold");
+        check("Гра «Тепло — холодно»", talk < 0.2f && hot > cold + 0.3f && hot > 0.7f,
+                String.format("розмова %.2f, далеко %.2f, близько %.2f", talk, cold, hot));
+        System.out.println("REPORT4\n" + String.join("\n", report));
+    }
 }
