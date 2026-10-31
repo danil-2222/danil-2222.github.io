@@ -2188,4 +2188,55 @@ public class MicCheck {
                         score, expected, java.util.Arrays.toString(hits)));
         System.out.println("REPORT27\n" + String.join("\n", report));
     }
+
+    @Test
+    public void karaoke() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 72);
+        Object g = get(a, "karaoke");
+        call(g, "setSong", new Class<?>[]{int.class}, 0);
+        float[][] midi = (float[][]) staticField("KaraokeGame", "MIDI"), beats = (float[][]) staticField("KaraokeGame", "BEATS");
+        float beat = 0.6f;
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        // A good singer (an octave lower, a few cents off), then a singer who is 40 cents flat and misses two notes.
+        double[][] singers = {{-12, 0.05}, {0, -0.40}};
+        float[] totals = new float[2];
+        for (int s2 = 0; s2 < 2; s2++) {
+            int n = midi[0].length;
+            float total = 0;
+            for (float b : beats[0]) total += b * beat;
+            float[] x = new float[(int) ((2.4 + total + 1) * RATE)];
+            double t = 2.4 + 0.08;                               // after the count-in; a little late like real people
+            for (int i = 0; i < n; i++) {
+                double len = beats[0][i] * beat;
+                boolean skip = s2 == 1 && (i == 5 || i == 11);
+                if (!skip) {
+                    float[] v = voice(440 * Math.pow(2, (midi[0][i] + singers[s2][0] + singers[s2][1] - 69) / 12), len - 0.05, 0.3f);
+                    int at = (int) (t * RATE);
+                    for (int k2 = 0; k2 < v.length && at + k2 < x.length; k2++) x[at + k2] += v[k2];
+                }
+                t += len;
+            }
+            mic(silence(1), true);
+            run(300);
+            call(g, "sing", new Class<?>[]{});
+            mic(x, false);
+            waitState(g, "RESULT", 40000);
+            totals[s2] = (Float) call(g, "total", new Class<?>[]{});
+
+            if (s2 == 0) shot(a, "99_karaoke_good");
+        }
+        shot(a, "99_karaoke_flat");
+        // Expected: good singer ~90 (5 cents => 90); flat singer: 100-80=20 on 23 notes, 0 on two => ~18.
+        ok = "RESULT".equals(call(g, "state", new Class<?>[]{})) && totals[0] > 78 && totals[1] > 12 && totals[1] < 30 && totals[0] - totals[1] > 45;
+        check("Караоке з оцінкою", ok, String.format("хороший співак (октавою нижче, +5 ц): %.0f; фальшивий (−40 ц, пропустив 2 ноти): %.0f",
+                totals[0], totals[1]));
+        System.out.println("REPORT28\n" + String.join("\n", report));
+    }
 }

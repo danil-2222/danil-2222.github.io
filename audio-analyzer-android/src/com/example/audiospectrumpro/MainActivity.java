@@ -1036,6 +1036,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {5, 19, "Азбука Морзе", "Пищить і розшифровує крапки й тире"},
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
             {6, 71, "Голосовий тир", "Приціл рухається висотою голосу — влучте в мішені"},
+            {6, 72, "Караоке з оцінкою", "Співайте пісню — телефон оцінить кожну ноту"},
             {6, 49, "Ритм-дуель (1–5 телефонів)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
@@ -2747,6 +2748,36 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Якщо голос «не влазить» на екран, оберіть інший діапазон (низький чи високий).";
     }
 
+    private KaraokeGame karaoke;
+
+    private String lessonKaraoke() {
+        ensureLive(0);
+        stopBuffer();
+        if (karaoke == null) {
+            karaoke = new KaraokeGame(density(), new KaraokeGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final KaraokeGame g = karaoke;
+        viz2d.showLesson(g);
+        dynSpinner("Пісня", KaraokeGame.SONGS, g.song, new OnPick() {
+            @Override public void pick(int i) { if (i != g.song) g.setSong(i); viz2d.invalidate(); }
+        });
+        LinearLayout row = dynRow();
+        dynButton(row, "👂 Послухати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.listen(); }
+        });
+        Button go = dynButton(row, "🎤 Співати", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.sing(); }
+        });
+        go.setTextColor(0xFFFF007F);
+        return "Спершу «👂 Послухати» — телефон зіграє мелодію, бруски на екрані побіжать разом із нею. Потім «🎤 Співати»: "
+                + "після відліку співайте на «ла-ла» (або зі словами), дивлячись на бруски. Ваш голос — блакитна лінія.\n\n"
+                + "Під час співу телефон мовчить, бо інакше він «почув би» сам себе. Кожна нота отримує оцінку: "
+                + "зелена — влучили (до ±10 центів), жовта — майже, червона — мимо. Октава не важлива — можна співати "
+                + "басом. Наприкінці — бали і зірки.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -3091,6 +3122,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 69: text = lessonInsulation(); break;
             case 70: text = lessonAbsorption(); break;
             case 71: text = lessonShooter(); break;
+            case 72: text = lessonKaraoke(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
