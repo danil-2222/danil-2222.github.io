@@ -984,7 +984,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     // ---------------------------------------------------------------- Sound Academy navigation
 
     private static final String[] CATEGORIES = {"Просто про звук", "Основи звуку", "Музика і голос", "Фізика й техніка",
-            "Слух і сприйняття", "Передача й творчість", "Ігри", "Експерименти"};
+            "Слух і сприйняття", "Передача й творчість", "Ігри", "Експерименти", "Ігри разом"};
     private static final String[] CATEGORY_DESC = {
             "Без графіків і цифр: ниточки, звірі, обличчя, пейзаж, колір",
             "Тон, гармоніки, струна, ряд Фур'є, шум, звук у повітрі",
@@ -993,7 +993,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             "Равлик вуха, що чує вухо, межа слуху",
             "Малюнок у звук, звуковий модем, азбука Морзе",
             "Папуга, тренажер слуху і тренажер ритму",
-            "Справжні виміри: температура повітря двома телефонами"};
+            "Справжні виміри: температура повітря двома телефонами",
+            "Для компанії: від 2 до 8 гравців, з одним або кількома телефонами"};
     /** {category, lesson id, title, one-line description} */
     private static final Object[][] LESSONS = {
             {0, 32, "Завіса з ниточок", "Свисніть — розгойдається «ваша» ниточка"},
@@ -1036,6 +1037,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {6, 20, "Тренажер слуху", "Яка нота вища, інтервали, повтори голосом"},
             {6, 49, "Ритм-дуель (1–2 телефони)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
+            {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2001,6 +2003,45 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "вологому повітрі результат буде на 1 °C вищим.";
     }
 
+    private WindGame windGame;
+
+    private String lessonWind() {
+        ensureLive(0);
+        stopBuffer();
+        if (windGame == null) {
+            windGame = new WindGame(density());
+            windGame.setPlayers(prefs.getString("wind_players", "Гравець 1, Гравець 2"));
+        }
+        final WindGame g = windGame;
+        viz2d.showLesson(g);
+        dynSpinner("Змагання", WindGame.MODE_NAMES, 0, new OnPick() {
+            @Override public void pick(int i) { g.setMode(i); viz2d.invalidate(); }
+        });
+        dynLabel("Гравці (через кому, до 8):");
+        final EditText names = dynEdit("Аня, Богдан, Віка", g.playersCsv());
+        LinearLayout row = dynRow();
+        dynButton(row, "👥 Зберегти гравців", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                g.setPlayers(names.getText().toString());
+                prefs.edit().putString("wind_players", g.playersCsv()).apply();
+                names.setText(g.playersCsv());
+                viz2d.invalidate();
+            }
+        });
+        Button go = dynButton(row, "▶ Старт", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.start(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Турнір з дмухання на одному телефоні: передавайте його по колу — так чесно, бо мікрофон один для всіх.\n\n"
+                + "💨 Хто сильніше — 4 секунди, рахується найсильніший порив (кулька).\n"
+                + "⏱ Хто довше — скільки секунд дмухаєте без перерви, хоч і слабко (вітряк).\n"
+                + "🔥 Сильно і довго — скільки протримаєтесь вище білої риски (вітрильник пливе до фінішу).\n"
+                + "🎯 Контроль — 12 секунд тримайте м'ячик у зеленій смузі, що повільно хвилюється.\n"
+                + "🏆 Чемпіон — усі чотири підряд, кожне до 100 очок.\n\n"
+                + "Застосунок відрізняє видих від голосу: спів чи крик не рахуються («Це не вітер!»). Тримайте телефон "
+                + "однаково, ~10 см від рота. Не більше 20 секунд за раз, між спробами відпочивайте — щоб не паморочилось.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2324,6 +2365,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 40: text = lessonParrot(); break;
             case 49: text = lessonDuel(); break;
             case 50: text = lessonTemperature(); break;
+            case 51: text = lessonWind(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

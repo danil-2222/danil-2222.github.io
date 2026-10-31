@@ -880,4 +880,117 @@ public class MicCheck {
                 String.format("вимірів %d, c = %.2f м/с (правда %.2f), T = %.2f °C (правда %.1f)", n, speed, c, temp, tempC));
         System.out.println("REPORT6\n" + String.join("\n", report));
     }
+
+    /** Blow noise whose strength (0..1 on the game's scale) follows a function of time. */
+    interface Curve { double at(double t); }
+
+    static float[] blowCurve(double sec, Curve strength) {
+        float[] unit = blowNoise(sec, 1f);
+        double rms = 0;
+        for (float v : unit) rms += v * v;
+        rms = Math.sqrt(rms / unit.length);
+        for (int i = 0; i < unit.length; i++) {
+            double s = strength.at((double) i / RATE);
+            double amp = s <= 0 ? 0 : Math.pow(10, (-50 + 40 * s) / 20) / rms;
+            unit[i] *= (float) amp;
+        }
+        return unit;
+    }
+
+    /** Same corridor as WindGame.target(). */
+    static double windTarget(double t) {
+        return 0.5 + 0.22 * Math.sin(2 * Math.PI * t / 6.0) + 0.06 * Math.sin(2 * Math.PI * t / 2.3);
+    }
+
+    static float[] blowConst(double sec, final double s) {
+        return blowCurve(sec, new Curve() { public double at(double t) { return s; } });
+    }
+
+    static float windAttempt(MainActivity a, Object g, float[] afterCountdown, int contest) throws Exception {
+        int p = (Integer) call(g, "player", new Class<?>[]{});
+        call(g, "start", new Class<?>[]{});
+        mic(concat(silence(3.0), afterCountdown, silence(8)), false);
+        long until = System.currentTimeMillis() + 40000;
+        while (System.currentTimeMillis() < until) {
+            run(200);
+            String st = (String) call(g, "state", new Class<?>[]{});
+            if (st.equals("DONE") || st.equals("TABLE")) break;
+        }
+        return (Float) call(g, "score", new Class<?>[]{int.class, int.class}, p, contest);
+    }
+
+    @Test
+    public void windGame() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 51);
+        Object g = get(a, "windGame");
+        call(g, "setPlayers", new Class<?>[]{String.class}, "Аня, Богдан, Віка");
+
+        // Strongest blow.
+        call(g, "setMode", new Class<?>[]{int.class}, 0);
+        float s1 = windAttempt(a, g, concat(silence(0.5), blowConst(1.2, 0.3)), 0);
+        float s2 = windAttempt(a, g, concat(silence(0.5), blowConst(1.2, 0.8)), 0);
+        float s3 = windAttempt(a, g, concat(silence(0.5), blowConst(1.2, 0.55)), 0);
+        shot(a, "99_wind_strong_table");
+        Integer[] rank = (Integer[]) call(g, "ranking", new Class<?>[]{});
+        check("Вітрило: хто сильніше", Math.abs(s1 - 30) <= 8 && Math.abs(s2 - 80) <= 8 && Math.abs(s3 - 55) <= 8
+                        && rank[0] == 1 && rank[1] == 2 && rank[2] == 0 && "TABLE".equals(call(g, "state", new Class<?>[]{})),
+                String.format("сила %.0f / %.0f / %.0f (задано 30 / 80 / 55), місця: %d,%d,%d", s1, s2, s3, rank[0], rank[1], rank[2]));
+
+        // Singing is not wind.
+        call(g, "setMode", new Class<?>[]{int.class}, 0);
+        float sv = windAttempt(a, g, concat(silence(0.5), voice(220, 1.5, 0.5f)), 0);
+        check("Вітрило: спів не рахується", sv <= 5 && (Boolean) call(g, "voiceWarned", new Class<?>[]{}),
+                String.format("сила від співу %.0f, попередження «Це не вітер» %s", sv, call(g, "voiceWarned", new Class<?>[]{})));
+
+        // Longest blow.
+        call(g, "setMode", new Class<?>[]{int.class}, 1);
+        float l1 = windAttempt(a, g, concat(silence(0.5), blowConst(2.0, 0.4)), 1);
+        float l2 = windAttempt(a, g, concat(silence(0.5), blowConst(5.0, 0.3)), 1);
+        float l3 = windAttempt(a, g, concat(silence(0.5), blowConst(3.5, 0.6)), 1);
+        check("Вітрило: хто довше", Math.abs(l1 - 2.0) <= 0.3 && Math.abs(l2 - 5.0) <= 0.3 && Math.abs(l3 - 3.5) <= 0.3,
+                String.format("%.2f / %.2f / %.2f с (задано 2 / 5 / 3.5)", l1, l2, l3));
+
+        // Strong and long: only the time above the bar counts.
+        call(g, "setMode", new Class<?>[]{int.class}, 2);
+        float k1 = windAttempt(a, g, concat(silence(0.5), blowConst(4.0, 0.75), blowConst(3.0, 0.3)), 2);
+        float k2 = windAttempt(a, g, concat(silence(0.5), blowConst(6.0, 0.4)), 2);
+        float k3 = windAttempt(a, g, concat(silence(0.5), blowConst(2.5, 0.9)), 2);
+        shot(a, "99_wind_stronglong_table");
+        check("Вітрило: сильно і довго", Math.abs(k1 - 4.0) <= 0.3 && k2 == 0 && Math.abs(k3 - 2.5) <= 0.3,
+                String.format("%.2f / %.2f / %.2f с (задано 4 / 0 (слабко) / 2.5)", k1, k2, k3));
+
+        // Control: following the corridor vs blowing steadily.
+        call(g, "setMode", new Class<?>[]{int.class}, 3);
+        float c1 = windAttempt(a, g, blowCurve(12.5, new Curve() {
+            public double at(double t) { return windTarget(t); }
+        }), 3);
+        float c2 = windAttempt(a, g, blowConst(12.5, 0.5), 3);
+        float c3 = windAttempt(a, g, silence(12.5), 3);
+        check("Вітрило: контроль", c1 >= 75 && c2 < c1 - 20 && c3 < 5,
+                String.format("слідує за смугою %.0f%%, рівно %.0f%%, тиша %.0f%%", c1, c2, c3));
+
+        // Champion: four contests per player.
+        call(g, "setPlayers", new Class<?>[]{String.class}, "Аня, Богдан");
+        call(g, "setMode", new Class<?>[]{int.class}, 4);
+        windAttempt(a, g, concat(silence(0.5), blowConst(1, 0.5)), 0);
+        shot(a, "99_wind_champion_play");
+        windAttempt(a, g, concat(silence(0.5), blowConst(2, 0.4)), 1);
+        windAttempt(a, g, concat(silence(0.5), blowConst(2, 0.8)), 2);
+        windAttempt(a, g, blowConst(12.5, 0.5), 3);
+        for (int i = 0; i < 3; i++) windAttempt(a, g, concat(silence(0.5), blowConst(3, 0.9)), i);
+        windAttempt(a, g, blowCurve(12.5, new Curve() {
+            public double at(double t) { return windTarget(t); }
+        }), 3);
+        shot(a, "99_wind_champion_table");
+        rank = (Integer[]) call(g, "ranking", new Class<?>[]{});
+        check("Вітрило: чемпіон", "TABLE".equals(call(g, "state", new Class<?>[]{})) && rank[0] == 1,
+                String.format("переможець — гравець %d (Богдан дмухав сильніше й рівніше)", rank[0]));
+        System.out.println("REPORT7\n" + String.join("\n", report));
+    }
 }
