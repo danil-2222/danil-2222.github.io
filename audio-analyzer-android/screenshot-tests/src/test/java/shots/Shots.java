@@ -157,6 +157,18 @@ public class Shots {
         shot(a, "10_fullscreen_waterfall");
     }
 
+    @Test @Config(sdk = 34, qualifiers = "w411dp-h891dp-port-xxhdpi")
+    public void liveLearningModes() throws Exception {
+        MainActivity a = setup();
+        gen("SAWTOOTH", 196, 0.4f);
+        select(a, "spinMode", 7);
+        run(1500);
+        shot(a, "44_live_fourier");
+        select(a, "spinMode", 10);
+        run(1500);
+        shot(a, "45_live_air");
+    }
+
     @Test @Config(sdk = 34, qualifiers = "w891dp-h411dp-land-xxhdpi")
     public void landscape() throws Exception {
         MainActivity a = setup();

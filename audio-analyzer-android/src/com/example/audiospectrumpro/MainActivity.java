@@ -49,6 +49,8 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             VisualizerView.Mode.INTERVALS, VisualizerView.Mode.AIR, VisualizerView.Mode.ECHO, VisualizerView.Mode.SAMPLING
     };
     private static final int WAVE_BUFFER = 10;
+    /** Mode spinner position -> index into MODES_2D: analyzer modes, then live learning views. */
+    private static final int[] SPINNER_MODES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12};
     private static final int MODE_PITCH = 8, MODE_CHROMA = 9, MODE_INTERVALS = 10, MODE_AIR = 11, MODE_ECHO = 12,
             MODE_SAMPLING = 13, WAVE_INTERVAL = 9;
     private static final String[] INTERVAL_NAMES = {"Унісон", "Мала секунда", "Велика секунда", "Мала терція",
@@ -301,7 +303,9 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         refreshFftLabels(RATES[Math.max(0, Math.min(RATES.length - 1, prefs.getInt("rate", 0)))]);
         spinner(R.id.spinMode, "mode", 0, new String[]{
                 "Спектр (лінія)", "Спектр (стовпчики)", "1/3 октави (RTA)", "Спектрограма (водоспад)",
-                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер"
+                "3D водоспад (OpenGL)", "Осцилограф", "Тюнер",
+                "🎓 Фур'є: кола", "🎓 Мелодія голосу", "🎓 Нотне коло (ноти й акорди)",
+                "🎓 Звук у повітрі", "🎓 Луна кімнати (RT60)"
         }, new OnPick() {
             @Override public void pick(int i) { applyMode(i); }
         });
@@ -327,7 +331,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 } else {
                     viz3d.setVisibility(View.GONE);
                     viz2d.setVisibility(View.VISIBLE);
-                    viz2d.setMode(MODES_2D[i]);
+                    viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
                 }
     }
 
@@ -803,7 +807,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             viz2d.setVisibility(View.GONE);
             viz3d.setVisibility(View.VISIBLE);
         } else {
-            viz2d.setMode(MODES_2D[i]);
+            viz2d.setMode(MODES_2D[SPINNER_MODES[i]]);
         }
         if (resumeOnStart) startEngine();
     }
