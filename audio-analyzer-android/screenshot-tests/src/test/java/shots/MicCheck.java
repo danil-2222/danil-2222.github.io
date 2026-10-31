@@ -2009,4 +2009,42 @@ public class MicCheck {
         check("Рулетка зі звуку", ok, sb + "(калібрування на 0,50 м)");
         System.out.println("REPORT23\n" + String.join("\n", report));
     }
+
+    @Test
+    public void distanceLaw() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 68);
+        Object e = get(a, "distLaw");
+        setField(e, "source", false);
+        float[] band = (float[]) staticCall("DistanceLawExperiment", "bandNoise", new Class<?>[]{});
+        float[] reverb = noise(3, 1f);                 // diffuse room sound, the same everywhere
+        double[] dist = {0.5, 1, 2, 4};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (int scene = 0; scene < 2; scene++) {
+            call(e, "clear", new Class<?>[]{});
+            double room = scene == 0 ? 0.0 : 0.12;        // outdoors vs a lively room
+            for (double d : dist) {
+                setField(e, "distance", (float) d);
+                float[] x = new float[3 * RATE];
+                for (int i = 0; i < x.length; i++) x[i] = (float) (0.2 / d * band[i % band.length] + room * reverb[i]) + 0.0005f * reverb[(i * 7) % reverb.length];
+                mic(x, true);
+                run(400);
+                call(e, "record", new Class<?>[]{});
+                run(2400);
+            }
+            if (scene == 0) shot(a, "99_distance_law");
+            float sl = (Float) call(e, "slope", new Class<?>[]{});
+            boolean good = scene == 0 ? Math.abs(sl + 6.02) < 0.3 : sl > -5.5 && sl < -2;
+            ok &= good;
+            sb.append(String.format("%s: %.2f дБ на подвоєння %s; ", scene == 0 ? "вулиця" : "гулка кімната", sl, good ? "✓" : "✗"));
+        }
+        check("Закон −6 дБ", ok, sb + "(теорія для вулиці −6,02)");
+        System.out.println("REPORT24\n" + String.join("\n", report));
+    }
 }

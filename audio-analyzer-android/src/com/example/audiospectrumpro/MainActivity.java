@@ -1041,6 +1041,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 65, "Ефект Доплера (2 телефони)", "Сирена на шнурку: з висоти тону — швидкість"},
             {7, 66, "Швидкість звуку з трубки", "Подуйте над трубкою — її нота розкаже про повітря"},
             {7, 67, "Рулетка зі звуку (2 телефони)", "Відстань між телефонами — з точністю до сантиметрів"},
+            {7, 68, "Закон −6 дБ (2 телефони)", "Удвічі далі — на скільки тихіше?"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2610,6 +2611,43 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "як завгодно і тисніть «📏 Виміряти». Так працюють ехолоти, датчики паркування і навіть GPS (там — радіохвилі).";
     }
 
+    private DistanceLawExperiment distLaw;
+
+    private String lessonDistanceLaw() {
+        ensureLive(0);
+        stopBuffer();
+        if (distLaw == null) {
+            distLaw = new DistanceLawExperiment(density(), new DistanceLawExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final DistanceLawExperiment e = distLaw;
+        viz2d.showLesson(e);
+        dynSpinner("Цей телефон", new String[]{"Вимірює", "Джерело шуму"}, e.source ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { e.source = i == 1; e.start(); viz2d.invalidate(); }
+        });
+        dynSlider("Відстань до джерела: %.2f м", "law_dist", 155, 6, new Value() {
+            @Override public float of(int p) { return 0.2f + 0.05f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { e.distance = 0.2f + 0.05f * p; }
+        });
+        LinearLayout row = dynRow();
+        Button go = dynButton(row, "📏 Записати рівень", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.record(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        dynButton(row, "Стерти", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.clear(); viz2d.invalidate(); }
+        });
+        return "Один телефон — «Джерело шуму»: покладіть його динаміком до себе і не рухайте. З другим відходьте на 0,5 м, "
+                + "1 м, 2 м, 4 м (рулеткою!), щоразу виставляйте відстань і тисніть «Записати рівень» — тримайте телефон "
+                + "однаково, мікрофоном до джерела.\n\n"
+                + "Звук розходиться кулею: удвічі далі — куля вчетверо більша, а енергії на кожен квадратний сантиметр "
+                + "вчетверо менше. Це −6 дБ. На вулиці так і буде. У кімнаті вийде менше (−3…−5 дБ): стіни повертають "
+                + "луну, і вдалині вона «доливає» гучність. Спробуйте в різних місцях — у коридорі, на вулиці, у ванній!";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2950,6 +2988,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 65: text = lessonDoppler(); break;
             case 66: text = lessonTube(); break;
             case 67: text = lessonRuler(); break;
+            case 68: text = lessonDistanceLaw(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
