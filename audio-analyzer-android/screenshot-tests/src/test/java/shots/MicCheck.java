@@ -2101,4 +2101,52 @@ public class MicCheck {
         check("Звукоізоляція по октавах", ok, "виміряно/задано дБ (125 Гц … 8 кГц) — " + sb);
         System.out.println("REPORT25\n" + String.join("\n", report));
     }
+
+    /** A clap in a room: a burst of noise whose reverberation dies away by 60 dB in rt60 seconds. */
+    static float[] clapInRoom(double rt60, double sec, Random r) {
+        float[] x = new float[(int) (sec * RATE)];
+        double tau = rt60 / (3 * Math.log(10));                 // amplitude falls 1000x (60 dB) in rt60
+        for (int i = 0; i < x.length; i++) {
+            double t = (double) i / RATE;
+            x[i] = (float) ((r.nextDouble() * 2 - 1) * 0.5 * Math.exp(-t / tau) + (r.nextDouble() * 2 - 1) * 0.0003);
+        }
+        return x;
+    }
+
+    @Test
+    public void absorption() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(noise(1, 0.0003f), true);
+        lesson(a, 70);
+        Object e = get(a, "absorption");
+        Random r = new Random(6);
+        Object[][] rooms = {{"Ванна", 2.0f, 1.7f, 2.5f, 1.3}, {"Спальня", 4.0f, 3.2f, 2.6f, 0.42}};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (Object[] rm : rooms) {
+            setField(e, "length", rm[1]); setField(e, "width", rm[2]); setField(e, "height", rm[3]);
+            call(e, "newRoom", new Class<?>[]{String.class}, rm[0]);
+            double rt = (Double) rm[4];
+            mic(concat(silence(1.2), clapInRoom(rt, 3, r), clapInRoom(rt, 3, r), clapInRoom(rt, 3, r), noise(1, 0.0003f)), false);
+            run(11500);
+            List<?> rooms2 = (List<?>) get(e, "rooms");
+            Object cur = rooms2.get(rooms2.size() - 1);
+            float got = (Float) call(cur, "rt60", new Class<?>[]{});
+            int claps = ((List<?>) get(cur, "rt")).size();
+            float alpha = (Float) call(cur, "alpha", new Class<?>[]{});
+            float L = (Float) rm[1], W = (Float) rm[2], H = (Float) rm[3];
+            double wantAlpha = Math.min(1, 0.161 * L * W * H / rt / (2 * (L * W + L * H + W * H)));
+            boolean good = claps == 3 && Math.abs(got - rt) / rt < 0.1 && Math.abs(alpha - wantAlpha) < 0.02;
+            ok &= good;
+            sb.append(String.format("%s: RT60 %.2f с (правда %.2f), α %.2f (теорія %.2f), оплесків %d %s; ", rm[0], got, rt, alpha, wantAlpha, claps,
+                    good ? "✓" : "✗"));
+        }
+        shot(a, "99_absorption");
+        check("Як кімнати «ковтають» звук", ok, sb.toString());
+        System.out.println("REPORT26\n" + String.join("\n", report));
+    }
 }

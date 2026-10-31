@@ -1043,6 +1043,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {7, 67, "Рулетка зі звуку (2 телефони)", "Відстань між телефонами — з точністю до сантиметрів"},
             {7, 68, "Закон −6 дБ (2 телефони)", "Удвічі далі — на скільки тихіше?"},
             {7, 69, "Звукоізоляція (2 телефони)", "Що краще глушить: двері, подушка чи вікно?"},
+            {7, 70, "Як кімнати «ковтають» звук", "Плесніть у ванній і в спальні — порівняйте луну"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2686,6 +2687,43 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "пухкі, а щілини «пропускають» звук, як вода крізь дірку.";
     }
 
+    private AbsorptionExperiment absorption;
+
+    private String lessonAbsorption() {
+        ensureLive(0);
+        stopBuffer();
+        if (absorption == null) absorption = new AbsorptionExperiment(density());
+        final AbsorptionExperiment e = absorption;
+        viz2d.showLesson(e);
+        final EditText name = dynEdit("Назва кімнати (ванна, спальня…)", "");
+        dynSlider("Довжина: %.1f м", "abs_l", 140, 30, new Value() {
+            @Override public float of(int p) { return 1 + 0.1f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { e.length = 1 + 0.1f * p; e.resize(); }
+        });
+        dynSlider("Ширина: %.1f м", "abs_w", 140, 20, new Value() {
+            @Override public float of(int p) { return 1 + 0.1f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { e.width = 1 + 0.1f * p; e.resize(); }
+        });
+        dynSlider("Висота: %.1f м", "abs_h", 40, 6, new Value() {
+            @Override public float of(int p) { return 2 + 0.1f * p; }
+        }, new OnPick() {
+            @Override public void pick(int p) { e.height = 2 + 0.1f * p; e.resize(); }
+        });
+        Button go = dynButton(dyn, "🏠 Нова кімната", new View.OnClickListener() {
+            @Override public void onClick(View v) { e.newRoom(name.getText().toString().trim()); name.setText(""); viz2d.invalidate(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "У ванній голос «гуде», а в спальні з ліжком і шторами звучить «сухо». Чому? Кахель відбиває майже весь "
+                + "звук, а тканина — ковтає. Виміряймо!\n\n"
+                + "Назвіть кімнату, виставте її розміри (приблизно, кроками), натисніть «🏠 Нова кімната» і плесніть у "
+                + "долоні 3 рази з паузами в 3 секунди, стоячи посередині. Телефон міряє RT60 — за скільки секунд луна "
+                + "затихає в мільйон разів (на 60 дБ).\n\n"
+                + "Далі формула Сабіна (1898 рік!): поглинання A = 0,161 · об'єм / RT60. Поділивши на площу всіх стін, "
+                + "підлоги й стелі, отримаємо α — яку частку звуку «ковтає» кожен квадратний метр. Порівняйте до 4 кімнат.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -3028,6 +3066,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 67: text = lessonRuler(); break;
             case 68: text = lessonDistanceLaw(); break;
             case 69: text = lessonInsulation(); break;
+            case 70: text = lessonAbsorption(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
