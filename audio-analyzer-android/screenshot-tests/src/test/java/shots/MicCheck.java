@@ -1858,4 +1858,50 @@ public class MicCheck {
                 String.format("вимірів %d, c = %.1f м/с (правда %.1f), T = %.1f °C (правда 17)", n, sp, c, t));
         System.out.println("REPORT20\n" + String.join("\n", report));
     }
+
+    /** A 4 kHz tone from a source whose speed towards the listener is v(t). */
+    static float[] doppler(double sec, Curve v, float amp) {
+        float[] x = new float[(int) (sec * RATE)];
+        double ph = 0, c = 343;
+        for (int i = 0; i < x.length; i++) {
+            double f = 4000 * c / (c - v.at((double) i / RATE));
+            ph += 2 * Math.PI * f / RATE;
+            x[i] = (float) (amp * Math.sin(ph));
+        }
+        return x;
+    }
+
+    @Test
+    public void dopplerEffect() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 65);
+        Object d = get(a, "doppler");
+        setField(d, "source", false);
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        // Swung on a cord: 1 m radius, one turn per second -> 6.28 m/s.  Walking past: 1.4 m/s.
+        final double swing = 2 * Math.PI * 1.0;
+        Curve[] moves = {
+                new Curve() { public double at(double t) { return swing * Math.sin(2 * Math.PI * t); } },
+                new Curve() { public double at(double t) { return 1.4 * Math.tanh((3 - t) * 1.5); } }};
+        double[] truth = {swing, 1.4};
+        String[] names = {"шнурок", "крок повз"};
+        for (int m = 0; m < 2; m++) {
+            call(d, "start", new Class<?>[]{});
+            mic(mix(doppler(6, moves[m], 0.05f), voice(180, 6, 0.02f)), false);
+            run(6000);
+            if (m == 0) shot(a, "99_doppler");
+            float v = (Float) call(d, "speed", new Class<?>[]{});
+            boolean good = Math.abs(v - truth[m]) < Math.max(0.15, truth[m] * 0.05);
+            ok &= good;
+            sb.append(String.format("%s: %.2f м/с (правда %.2f) %s; ", names[m], v, truth[m], good ? "✓" : "✗"));
+        }
+        check("Ефект Доплера: швидкість з висоти тону", ok, sb.toString());
+        System.out.println("REPORT21\n" + String.join("\n", report));
+    }
 }

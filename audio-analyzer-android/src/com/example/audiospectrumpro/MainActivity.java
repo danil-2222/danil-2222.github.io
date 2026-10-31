@@ -1038,6 +1038,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {6, 49, "Ритм-дуель (1–5 телефонів)", "Закривайте мікрофон пальцем у такт музики — хто точніший?"},
             {7, 50, "Термометр зі звуку (2 телефони)", "Швидкість звуку залежить від температури — виміряємо її!"},
             {7, 64, "Швидкість звуку однією рукою", "Один телефон і стіна: луна покаже швидкість звуку"},
+            {7, 65, "Ефект Доплера (2 телефони)", "Сирена на шнурку: з висоти тону — швидкість"},
             {8, 51, "Вітрило (2–8 гравців, 1 телефон)", "Хто сильніше, хто довше, хто рівніше дмухає"},
             {8, 52, "Музична пауза (2–6 телефонів)", "Музика замовкла — хто швидше закриє мікрофон?"},
             {8, 53, "Перетягування каната (2 команди)", "«У-у-у» проти «ш-ш-ш» — чия команда сильніша?"},
@@ -2501,6 +2502,34 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "Порада: стійте в тиші, далеко від інших предметів; кілька вимірів на кожній відстані роблять результат точнішим.";
     }
 
+    private DopplerExperiment doppler;
+
+    private String lessonDoppler() {
+        ensureLive(0);
+        stopBuffer();
+        if (doppler == null) {
+            doppler = new DopplerExperiment(density(), new DopplerExperiment.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+                @Override public void stop() { stopBuffer(); }
+            });
+        }
+        final DopplerExperiment d = doppler;
+        viz2d.showLesson(d);
+        dynSpinner("Цей телефон", new String[]{"Слухач (вимірює)", "Сирена (звучить і рухається)"}, d.source ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { d.source = i == 1; d.start(); viz2d.invalidate(); }
+        });
+        dynButton(dyn, "↺ Почати вимір заново", new View.OnClickListener() {
+            @Override public void onClick(View v) { d.start(); viz2d.invalidate(); }
+        });
+        return "Пам'ятаєте, як змінюється сирена швидкої, що проїжджає повз: «і-і-і-у-у-у»? Коли джерело звуку "
+                + "наближається, хвилі «стискаються» і тон вищий, коли віддаляється — нижчий. Це ефект Доплера.\n\n"
+                + "Один телефон — «Сирена»: він рівно звучить на 4000 Гц. Прив'яжіть його до шнурка (надійно! або покладіть "
+                + "у шкарпетку) і обережно розкрутіть над головою — або просто пробіжіть з ним повз слухача. Другий телефон — "
+                + "«Слухач»: стоїть на місці і малює висоту тону.\n\n"
+                + "Зі швидкості звуку c і найвищої та найнижчої частот виходить швидкість телефона: v = c·(f₁ − f₂)/(f₁ + f₂). "
+                + "Наприклад, 1 м/с (крок) змінює тон лише на ~12 Гц, а 6 м/с (шнурок) — на ~70 Гц.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2838,6 +2867,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 62: text = lessonCowboy(); break;
             case 63: text = lessonRelay(); break;
             case 64: text = lessonEchoSpeed(); break;
+            case 65: text = lessonDoppler(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
