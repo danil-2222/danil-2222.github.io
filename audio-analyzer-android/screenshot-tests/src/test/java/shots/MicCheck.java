@@ -1,6 +1,7 @@
 package shots;
 
 import android.Manifest;
+import android.graphics.RectF;
 import android.app.Application;
 import android.os.Looper;
 import android.view.View;
@@ -1471,5 +1472,128 @@ public class MicCheck {
         shot(a, "99_sing_table");
         check("Заспівай ноту: точність у центах", ok && "TABLE".equals(call(g, "state", new Class<?>[]{})), sb.toString());
         System.out.println("REPORT14\n" + String.join("\n", report));
+    }
+
+    static double gz(float[] x, int off, int n, double hz) {
+        double w = 2 * Math.PI * hz / RATE, cf = 2 * Math.cos(w), s1 = 0, s2 = 0;
+        for (int i = 0; i < n && off + i < x.length; i++) { double v = x[off + i] + cf * s1 - s2; s2 = s1; s1 = v; }
+        return s1 * s1 + s2 * s2 - cf * s1 * s2;
+    }
+
+    static double midiHz(double m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+    /** The strongest semitone (by its fundamental) in a stretch of sound. */
+    static int strongestSemitone(float[] x, int off, int n) {
+        int best = 0;
+        double bv = -1;
+        for (int m = 40; m < 80; m++) { double v = gz(x, off, n, midiHz(m)); if (v > bv) { bv = v; best = m; } }
+        return best;
+    }
+
+    @Test
+    public void soundQuiz() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        lesson(a, 59);
+        Object g = get(a, "quizGame");
+        Class<?> qc = Class.forName("com.example.audiospectrumpro.QuizGame");
+        java.lang.reflect.Method make = qc.getDeclaredMethod("make", Random.class, int.class);
+        make.setAccessible(true);
+        int[] checked = new int[5], wrong = new int[5];
+        Random r = new Random(77);
+        for (int k = 0; k < 250; k++) {
+            int type = k % 5;
+            Object q = make.invoke(null, r, type);
+            float[] pcm = (float[]) get(q, "pcm");
+            String[] opts = (String[]) get(q, "options");
+            int ans = (Integer) get(q, "answer");
+            boolean ok;
+            switch (type) {
+                case 0: {
+                    java.util.Set<String> distinct = new java.util.HashSet<>(java.util.Arrays.asList(opts));
+                    String inst = opts[ans];
+                    ok = distinct.size() == 4;
+                    if (inst.equals("Кларнет")) {      // odd harmonics only
+                        double f = midiHz(60);
+                        ok &= gz(pcm, 4800, 9600, 2 * f) < 0.02 * gz(pcm, 4800, 9600, f) && gz(pcm, 4800, 9600, 3 * f) > 0.03 * gz(pcm, 4800, 9600, f);
+                    }
+                    if (inst.equals("Флейта")) ok &= gz(pcm, 4800, 9600, 3 * midiHz(60)) < 0.01 * gz(pcm, 4800, 9600, midiHz(60));
+                    if (inst.equals("Дзвіночок")) ok &= gz(pcm, 0, 9600, 2 * 2.76 * midiHz(60)) > 0.05 * gz(pcm, 0, 9600, 2 * midiHz(60));
+                    break;
+                }
+                case 1: {
+                    double[] hz = {100, 440, 1000, 4000};
+                    int best = 0;
+                    for (int i = 1; i < 4; i++) if (gz(pcm, 4800, 24000, hz[i]) > gz(pcm, 4800, 24000, hz[best])) best = i;
+                    ok = best == ans;
+                    break;
+                }
+                case 2: {
+                    int m1 = strongestSemitone(pcm, 2400, 24000), m2 = strongestSemitone(pcm, (int) (0.9 * RATE) + 2400, 24000);
+                    int truth = m2 > m1 ? 0 : m2 < m1 ? 1 : 2;
+                    ok = truth == ans;
+                    break;
+                }
+                case 3: {
+                    int beeps = 0;
+                    boolean on = false;
+                    for (int off = 0; off + 480 <= pcm.length; off += 480) {
+                        double e = 0;
+                        for (int i = 0; i < 480; i++) e += pcm[off + i] * pcm[off + i];
+                        boolean loud = e / 480 > 1e-3;
+                        if (loud && !on) beeps++;
+                        on = loud;
+                    }
+                    ok = String.valueOf(beeps).equals(opts[ans]);
+                    break;
+                }
+                default: {
+                    double bestMaj = 0, bestMin = 0;
+                    for (int m = 50; m < 66; m++) {
+                        double r0 = gz(pcm, 2400, 48000, midiHz(m)), r5 = gz(pcm, 2400, 48000, midiHz(m + 7));
+                        bestMaj = Math.max(bestMaj, Math.min(Math.min(r0, r5), gz(pcm, 2400, 48000, midiHz(m + 4))));
+                        bestMin = Math.max(bestMin, Math.min(Math.min(r0, r5), gz(pcm, 2400, 48000, midiHz(m + 3))));
+                    }
+                    ok = (bestMaj > bestMin ? 0 : 1) == ans;
+                    break;
+                }
+            }
+            checked[type]++;
+            if (!ok) wrong[type]++;
+        }
+        check("Квіз: правильні відповіді справді правильні", wrong[0] + wrong[1] + wrong[2] + wrong[3] + wrong[4] == 0,
+                String.format("перевірено незалежним аналізом звуку по 50 питань кожного типу; помилок: інструменти %d, частота %d, вище/нижче %d, піки %d, мажор/мінор %d",
+                        wrong[0], wrong[1], wrong[2], wrong[3], wrong[4]));
+
+        // The game flow: two teams, ten questions, a tap on the screen answers.
+        call(g, "setPlayers", new Class<?>[]{String.class}, "Сови, Їжаки");
+        call(g, "newGame", new Class<?>[]{long.class}, 5L);
+        run(300);
+        shot(a, "99_quiz_start");
+        View v = (View) viz(a);
+        RectF[] boxes = (RectF[]) get(g, "boxes");
+        Object q0 = call(g, "question", new Class<?>[]{});
+        RectF hit = boxes[(Integer) get(q0, "answer")];
+        long t0 = android.os.SystemClock.uptimeMillis();
+        v.dispatchTouchEvent(android.view.MotionEvent.obtain(t0, t0, android.view.MotionEvent.ACTION_DOWN, hit.centerX(), hit.centerY(), 0));
+        v.dispatchTouchEvent(android.view.MotionEvent.obtain(t0, t0 + 50, android.view.MotionEvent.ACTION_UP, hit.centerX(), hit.centerY(), 0));
+        run(200);
+        shot(a, "99_quiz_question");
+        int tapScore = (Integer) call(g, "score", new Class<?>[]{int.class}, 0);
+        call(g, "next", new Class<?>[]{});
+        for (int i = 1; i < 10; i++) {
+            Object q = call(g, "question", new Class<?>[]{});
+            int ans = (Integer) get(q, "answer");
+            call(g, "answer", new Class<?>[]{int.class}, i % 3 == 0 ? (ans + 1) % 4 : ans);    // every third answer wrong
+            call(g, "next", new Class<?>[]{});
+        }
+        run(200);
+        shot(a, "99_quiz_table");
+        int s0 = (Integer) call(g, "score", new Class<?>[]{int.class}, 0), s1 = (Integer) call(g, "score", new Class<?>[]{int.class}, 1);
+        check("Квіз: гра двома командами", tapScore == 1 && (Boolean) call(g, "finished", new Class<?>[]{}) && s0 == 4 && s1 == 3,
+                String.format("дотик до правильної відповіді зараховано: %s; рахунок Сови %d, Їжаки %d (очікувалось 4 і 3)", tapScore == 1, s0, s1));
+        System.out.println("REPORT15\n" + String.join("\n", report));
     }
 }

@@ -1045,6 +1045,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 56, "Зіпсований телефон (3+ гравців)", "Мелодія з вуха у вухо — що з неї лишиться?"},
             {8, 57, "Гаряча картопля (3+ гравців)", "Свисни, загуди чи подми — і швидше передай!"},
             {8, 58, "Заспівай ноту (1–8 гравців)", "Хто найточніше повторить ноти — у центах"},
+            {8, 59, "Звуковий квіз (команди)", "Інструменти, частоти, акорди — хто краще чує?"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -1058,7 +1059,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
     };
 
     /** Lessons that only show synthetic sound (the microphone is not used). */
-    private static final java.util.Set<Integer> NO_MIC = new java.util.HashSet<>(java.util.Arrays.asList(3, 4, 6, 9, 12, 27, 28));
+    private static final java.util.Set<Integer> NO_MIC = new java.util.HashSet<>(java.util.Arrays.asList(3, 4, 6, 9, 12, 27, 28, 59));
     /** Lessons that work with the microphone and also have a built-in demo sound. */
     private static final java.util.Set<Integer> MIC_AND_DEMO = new java.util.HashSet<>(java.util.Arrays.asList(5, 13, 14, 19, 20, 24, 26));
 
@@ -2267,6 +2268,48 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "співаки влучають у ±10–15 центів!";
     }
 
+    private QuizGame quizGame;
+
+    private String lessonQuiz() {
+        ensureLive(0);
+        stopBuffer();
+        if (quizGame == null) {
+            quizGame = new QuizGame(density(), new QuizGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+            quizGame.setPlayers(prefs.getString("quiz_players", "Команда 1, Команда 2"));
+        }
+        final QuizGame g = quizGame;
+        viz2d.showLesson(g);
+        LinearLayout row = dynRow();
+        dynButton(row, "🔊 Ще раз", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.playQuestion(); }
+        });
+        Button next = dynButton(row, "Далі →", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.next(); viz2d.invalidate(); }
+        });
+        next.setTextColor(0xFF00F0FF);
+        dynLabel("Гравці або команди (через кому, до 6):");
+        final EditText names = dynEdit("Команда 1, Команда 2", g.playersCsv());
+        dynButton(dyn, "👥 Нова гра", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                g.setPlayers(names.getText().toString());
+                prefs.edit().putString("quiz_players", g.playersCsv()).apply();
+                names.setText(g.playersCsv());
+                g.playQuestion();
+                viz2d.invalidate();
+            }
+        });
+        g.playQuestion();
+        return "Десять питань на слух, гравці чи команди відповідають по черзі. Телефон грає звук — торкніться "
+                + "відповіді на екрані. «🔊 Ще раз» — послухати ще. Після відповіді правильна підсвітиться зеленим.\n\n"
+                + "Питання бувають такі: який інструмент (флейта, скрипка, кларнет, піаніно, орган, дзвіночок — вони "
+                + "відрізняються набором гармонік і тим, як звук починається й згасає); яка частота тону; вища чи нижча "
+                + "друга нота; скільки разів пікнуло; мажор чи мінор.\n\n"
+                + "Підказка: відкрийте спектр у вкладці «Вигляд» після гри — і побачите, чим скрипка відрізняється "
+                + "від флейти.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2598,6 +2641,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 56: text = lessonChain(); break;
             case 57: text = lessonPotato(); break;
             case 58: text = lessonSingNote(); break;
+            case 59: text = lessonQuiz(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
