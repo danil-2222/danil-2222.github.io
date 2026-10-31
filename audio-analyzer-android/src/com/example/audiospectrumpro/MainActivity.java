@@ -1049,6 +1049,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 60, "Звукові хованки (2+ телефони)", "Знайди телефон, що пищить, — хто швидше?"},
             {8, 61, "Шпигуни (2 телефони)", "Шифр Цезаря летить звуком — хто зламає?"},
             {8, 62, "Ковбойська дуель (2 телефони)", "ПІФ! — хто швидше закриє мікрофон?"},
+            {8, 63, "Естафета історії (2–5 телефонів)", "Кожен телефон додає слово і передає звуком далі"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -1382,7 +1383,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
         stopBuffer();
         modemLesson.reset();
         viz2d.showLesson(modemLesson);
-        final EditText msg = dynEdit("Повідомлення (до 48 байт)", prefs.getString("modemText", "Привіт! 👋"));
+        final EditText msg = dynEdit("Повідомлення (до 96 байт ≈ 45 літер)", prefs.getString("modemText", "Привіт! 👋"));
         Button send = dynButton(dyn, "📤 Надіслати звуком", new View.OnClickListener() {
             @Override public void onClick(View v) {
                 String t = msg.getText().toString();
@@ -2425,6 +2426,46 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "телефони звуком обмінюються часом — і обидва покажуть рахунок. Звичайна реакція людини — 200–300 мс.";
     }
 
+    private RelayGame relayGame;
+
+    private String lessonRelay() {
+        ensureLive(0);
+        stopBuffer();
+        if (relayGame == null) {
+            relayGame = new RelayGame(density(), new RelayGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+        }
+        final RelayGame g = relayGame;
+        viz2d.showLesson(g);
+        dynSpinner("Мій номер", new String[]{"Телефон 1 (починає)", "Телефон 2", "Телефон 3", "Телефон 4", "Телефон 5"}, g.me - 1,
+                new OnPick() {
+                    @Override public void pick(int i) { g.me = i + 1; g.reset(); viz2d.invalidate(); }
+                });
+        dynSpinner("Скільки телефонів у колі", new String[]{"2", "3", "4", "5"}, g.phones - 2, new OnPick() {
+            @Override public void pick(int i) { g.phones = i + 2; g.reset(); viz2d.invalidate(); }
+        });
+        dynSpinner("Режим", new String[]{"Історія: кожен додає слово", "Швидка естафета (передає сам)"}, g.auto ? 1 : 0, new OnPick() {
+            @Override public void pick(int i) { g.auto = i == 1; viz2d.invalidate(); }
+        });
+        final EditText word = dynEdit("Ваше слово", "");
+        LinearLayout row = dynRow();
+        Button send = dynButton(row, "📡 Передати", new View.OnClickListener() {
+            @Override public void onClick(View v) { if (g.addAndSend(word.getText().toString())) word.setText(""); viz2d.invalidate(); }
+        });
+        send.setTextColor(0xFFFF007F);
+        dynButton(row, "Заново", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.reset(); viz2d.invalidate(); }
+        });
+        return "Телефони стоять колом поруч (сусідні — на відстані до метра). Кожен обирає свій номер, і в усіх однакова "
+                + "кількість телефонів.\n\n"
+                + "Історія: телефон 1 пише перше слово і тисне «📡 Передати». Телефон 2 «чує» історію, гравець додає своє "
+                + "слово — і передає далі. Останній телефон відправляє готову історію назад телефону 1. Виходять кумедні "
+                + "речення!\n\n"
+                + "Швидка естафета: телефони передають повідомлення самі, а телефон 1 міряє, за скільки секунд воно "
+                + "оббігло коло. Кожен телефон слухає лише свого попередника — тому повідомлення йде саме по колу.";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2760,6 +2801,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 60: text = lessonHideSeek(); break;
             case 61: text = lessonSpy(); break;
             case 62: text = lessonCowboy(); break;
+            case 63: text = lessonRelay(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);

@@ -19,7 +19,7 @@ final class ModemLesson implements LessonView {
     static final int TONES = 17;
     static final float BASE_HZ = 1600, STEP_HZ = 140, PRE_HZ = 1200, END_HZ = 4300;
     static final float SYMBOL_S = 0.07f, PRE_S = 0.4f, END_S = 0.2f;
-    static final int MAX_BYTES = 48;
+    static final int MAX_BYTES = 96;
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final int SYM_PRE = TONES, SYM_END = TONES + 1, SYM_NONE = -1;
 

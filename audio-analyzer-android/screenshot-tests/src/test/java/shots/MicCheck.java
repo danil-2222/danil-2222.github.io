@@ -1766,4 +1766,60 @@ public class MicCheck {
                         + "; фальстартів " + call(g, "falseStarts", new Class<?>[]{}));
         System.out.println("REPORT18\n" + String.join("\n", report));
     }
+
+    @Test
+    public void relay() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 63);
+        Object g = get(a, "relayGame");
+        StringBuilder sb = new StringBuilder();
+
+        // Story mode, phone 2 of 3: hears phone 1 (and ignores phone 3's later message), adds a word.
+        setField(g, "me", 2); setField(g, "phones", 3); setField(g, "auto", false);
+        call(g, "reset", new Class<?>[]{});
+        float[] m1 = modem("R1:Жив собі", 0.3f), m3 = modem("DONE:щось інше", 0.3f);
+        mic(concat(silence(0.4), m1, silence(0.5), m3, silence(1)), false);
+        run((m1.length + m3.length) * 1000L / RATE + 2000);
+        String heard = (String) call(g, "story", new Class<?>[]{});
+        call(g, "addAndSend", new Class<?>[]{String.class}, "веселий");
+        String sent2 = (String) call(g, "lastSent", new Class<?>[]{});
+        boolean ok1 = "Жив собі".equals(heard) && "R2:Жив собі веселий".equals(sent2);
+        sb.append("історія: почув «").append(heard).append("», передав «").append(sent2).append("» ").append(ok1 ? "✓" : "✗").append("; ");
+        shot(a, "99_relay_story");
+
+        // Fast relay, last phone (3 of 3) passes the message back to phone 1 by itself.
+        setField(g, "me", 3); setField(g, "auto", true);
+        call(g, "reset", new Class<?>[]{});
+        float[] m2 = modem("R2:Швидко!", 0.3f);
+        mic(concat(silence(0.4), m2, silence(3)), false);
+        run(m2.length * 1000L / RATE + 2500);
+        String sent3 = (String) call(g, "lastSent", new Class<?>[]{});
+        boolean ok2 = "DONE:Швидко!".equals(sent3);
+        sb.append("автопередача: «").append(sent3).append("» ").append(ok2 ? "✓" : "✗").append("; ");
+
+        // Phone 1 gets back a long story (about 85 bytes) in noise and times the lap.
+        setField(g, "me", 1);
+        call(g, "reset", new Class<?>[]{});
+        mic(silence(1), true);
+        run(200);
+        call(g, "addAndSend", new Class<?>[]{String.class}, "Жив");
+        String longStory = "Жив собі веселий кіт який любив співати пісні";
+        float[] own = modem("R1:Жив", 1f);
+        run(own.length * 1000L / RATE + 100);
+        float[] back = modem("DONE:" + longStory, 0.3f);
+        mic(mix(concat(silence(1.5), back, silence(2)), noise(back.length / (double) RATE + 3.5, 0.01f)), false);
+        run(back.length * 1000L / RATE + 3000);
+        shot(a, "99_relay_done");
+        boolean ok3 = (Boolean) call(g, "finished", new Class<?>[]{}) && longStory.equals(call(g, "story", new Class<?>[]{}))
+                && (Float) call(g, "lapSeconds", new Class<?>[]{}) > 1;
+        sb.append(String.format("коло: повернулось «%s» (%d байт) за %.1f с %s", call(g, "story", new Class<?>[]{}),
+                longStory.getBytes("UTF-8").length, (Float) call(g, "lapSeconds", new Class<?>[]{}), ok3 ? "✓" : "✗"));
+        check("Естафета історії", ok1 && ok2 && ok3, sb.toString());
+        System.out.println("REPORT19\n" + String.join("\n", report));
+    }
 }
