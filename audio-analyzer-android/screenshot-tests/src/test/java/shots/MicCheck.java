@@ -1427,4 +1427,49 @@ public class MicCheck {
                 "вибух ✓, передач " + call(g, "passes", new Class<?>[]{}));
         System.out.println("REPORT13\n" + String.join("\n", report));
     }
+
+    @Test
+    public void singNote() throws Exception {
+        installMic();
+        Application app = RuntimeEnvironment.getApplication();
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO);
+        app.getSharedPreferences("settings", 0).edit().putInt("source", 0).commit();
+        MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
+        mic(silence(1), true);
+        lesson(a, 58);
+        Object g = get(a, "singGame");
+        call(g, "setPlayers", new Class<?>[]{String.class}, "Аня, Богдан, Віка");
+        call(g, "newGame", new Class<?>[]{long.class}, 21L);
+        // Аня: +5 cents, an octave lower.  Богдан: 30 cents flat.  Віка: a whole tone off on the 2nd note.
+        double[][] plan = {{0.05, -12}, {-0.30, 0}, {0.0, 12}};
+        StringBuilder sb = new StringBuilder();
+        boolean ok = true;
+        for (int round = 0; round < 3; round++) {
+            for (int p2 = 0; p2 < 3; p2++) {
+                List<Float> target = new ArrayList<>((List<Float>) call(g, "target", new Class<?>[]{}));
+                List<Float> sungNotes = new ArrayList<>();
+                for (int i = 0; i < target.size(); i++) {
+                    float m = (float) (target.get(i) + plan[p2][1] + plan[p2][0]);
+                    if (p2 == 2 && i == 1) m += 2;
+                    sungNotes.add(m);
+                }
+                mic(silence(1), true);
+                run(200);
+                call(g, "turn", new Class<?>[]{});
+                run((long) (target.size() * 800 + 900));                // the reference plays
+                mic(concat(silence(0.3), sing(sungNotes, 0.8, 0), silence(1)), false);
+                long until = System.currentTimeMillis() + 20000;
+                while (System.currentTimeMillis() < until && !("SCORED".equals(call(g, "state", new Class<?>[]{}))
+                        || "TABLE".equals(call(g, "state", new Class<?>[]{})))) run(200);
+                float sc = (Float) call(g, "lastScore", new Class<?>[]{});
+                float want = p2 == 0 ? 90 : p2 == 1 ? 40 : (target.size() >= 2 ? 100f * (target.size() - 1) / target.size() : 100);
+                ok &= Math.abs(sc - want) <= 8;
+                sb.append(String.format("р%d %s: %.0f (≈%.0f)  ", round + 1, new String[]{"Аня", "Богдан", "Віка"}[p2], sc, want));
+                if (round == 1 && p2 == 2) shot(a, "99_sing_scored");
+            }
+        }
+        shot(a, "99_sing_table");
+        check("Заспівай ноту: точність у центах", ok && "TABLE".equals(call(g, "state", new Class<?>[]{})), sb.toString());
+        System.out.println("REPORT14\n" + String.join("\n", report));
+    }
 }

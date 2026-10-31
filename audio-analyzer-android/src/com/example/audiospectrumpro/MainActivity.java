@@ -1044,6 +1044,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             {8, 55, "Замри! (будь-скільки гравців)", "Музика — танцюємо, тиша — ні звуку"},
             {8, 56, "Зіпсований телефон (3+ гравців)", "Мелодія з вуха у вухо — що з неї лишиться?"},
             {8, 57, "Гаряча картопля (3+ гравців)", "Свисни, загуди чи подми — і швидше передай!"},
+            {8, 58, "Заспівай ноту (1–8 гравців)", "Хто найточніше повторить ноти — у центах"},
             {6, 40, "Папуга Кеша", "Скажіть щось — папуга повторить смішним голосом"},
             {6, 41, "Задуй свічки", "Дмухайте в мікрофон — гасіть свічки на торті"},
             {6, 42, "Розбий склянку голосом", "Знайдіть ноту склянки й утримайте її"},
@@ -2230,6 +2231,42 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
                 + "«БАБАХ» — вибуває. Грайте, поки не залишиться один переможець!";
     }
 
+    private SingNoteGame singGame;
+
+    private String lessonSingNote() {
+        ensureLive(0);
+        stopBuffer();
+        if (singGame == null) {
+            singGame = new SingNoteGame(density(), new SingNoteGame.Sound() {
+                @Override public void play(float[] pcm, boolean loop) { playBuffer(pcm, loop); }
+            });
+            singGame.setPlayers(prefs.getString("sing_players", "Гравець 1, Гравець 2"));
+        }
+        final SingNoteGame g = singGame;
+        viz2d.showLesson(g);
+        dynLabel("Гравці (через кому, до 8):");
+        final EditText names = dynEdit("Аня, Богдан, Віка", g.playersCsv());
+        LinearLayout row = dynRow();
+        dynButton(row, "👥 Нова гра", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                g.setPlayers(names.getText().toString());
+                prefs.edit().putString("sing_players", g.playersCsv()).apply();
+                names.setText(g.playersCsv());
+                viz2d.invalidate();
+            }
+        });
+        Button go = dynButton(row, "▶ Мій хід", new View.OnClickListener() {
+            @Override public void onClick(View v) { g.turn(); }
+        });
+        go.setTextColor(0xFF00F0FF);
+        return "Телефон передають по колу. На своєму ході натисніть «▶ Мій хід»: телефон зіграє ноту, а ви заспівайте "
+                + "її на «ла-а-а» (у будь-якій октаві — хоч басом, хоч тоненько). У другому раунді — дві ноти, у третьому — "
+                + "три.\n\n"
+                + "Точність міряється в центах: 100 центів — це півтону, сусідня клавіша піаніно. Ідеально — 100 очок, "
+                + "кожен цент помилки забирає 2 очки. Кружечок показує, чи ви заспівали вище, чи нижче. Досвідчені "
+                + "співаки влучають у ±10–15 центів!";
+    }
+
     private ParrotLesson parrotLesson;
     private int parrotVoice = 1;
 
@@ -2560,6 +2597,7 @@ public class MainActivity extends Activity implements AudioEngine.Listener, Visu
             case 55: text = lessonFreeze(); break;
             case 56: text = lessonChain(); break;
             case 57: text = lessonPotato(); break;
+            case 58: text = lessonSingNote(); break;
             case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: text = lessonGame(n); break;
             case 7:
                 showLessonMode(MODES_2D[MODE_PITCH]);
