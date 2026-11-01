@@ -968,6 +968,9 @@ public class MicCheck {
             estOk &= Math.abs(e - dd) < 0.03 * dd + 0.03;
             est.append(String.format("%.2f→%.2f ", dd, e));
         }
+        float lat = (Float) call(t, "latencyMs", new Class<?>[]{});
+        check("Термометр: автокалібровка затримки", lat > 0 && lat < 1000,
+                String.format("виміряна затримка «команда → почув свій пік»: %.0f мс (тестовий звук записаний наперед, тож точне число перевіряється лише на телефоні)", lat));
         check("Термометр: відстань «на слух» (за 20 °C)", estOk, "рулетка→звук, м: " + est + "(повітря 8 °C, тож звук завищує на ~2 % — як і має бути)");
         int n = (Integer) call(t, "count", new Class<?>[]{});
         double speed = (Double) call(t, "speed", new Class<?>[]{});

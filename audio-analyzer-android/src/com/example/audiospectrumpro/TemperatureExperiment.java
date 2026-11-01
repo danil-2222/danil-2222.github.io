@@ -79,6 +79,9 @@ final class TemperatureExperiment implements LessonView {
     private int heardChirps, repeatsLeft;
     private final List<Double> runD = new ArrayList<>();
     private boolean linkOk;
+    /** Auto-calibration: when we asked the speaker to chirp (in microphone samples) and the measured delay. */
+    private long playCmdSample = -1;
+    private float latencyMs = Float.NaN;
     private double firstArrival;          // refined sample position of the first chirp heard
     private double deltaA = Double.NaN, deltaB = Double.NaN;
     private String sent = "";
@@ -173,6 +176,7 @@ final class TemperatureExperiment implements LessonView {
         state = State.A_SELF;
         deadline = clockMs + 3000;
         status = String.format(Locale.US, "📢 Пік! (вимір %d з %d)", REPEATS - repeatsLeft + 1, REPEATS);
+        playCmdSample = total;
         sound.play(chirpSound(), false);
     }
 
@@ -394,6 +398,7 @@ final class TemperatureExperiment implements LessonView {
         switch (state) {
             case A_SELF:
                 firstArrival = pos;
+                measureLatency(pos);
                 state = State.A_OTHER;
                 deadline = clockMs + 3000;
                 status = "👂 Чекаю відповідь телефона B…";
@@ -415,6 +420,7 @@ final class TemperatureExperiment implements LessonView {
                 break;
             case B_SELF:
                 if (pos - firstArrival < 0.2 * rate) break;
+                measureLatency(pos);
                 deltaB = (pos - firstArrival) / rate;
                 sent = "B:" + Math.round(deltaB * 1e6);
                 float[] msg = ModemLesson.encode(sent, OUT_RATE);
@@ -510,6 +516,7 @@ final class TemperatureExperiment implements LessonView {
             }
             case B_WAIT_PLAY:
                 if (clockMs >= playAt) {
+                    playCmdSample = total;
                     sound.play(chirpSound(), false);
                     state = State.B_SELF;
                     deadline = clockMs + 2500;
@@ -535,6 +542,19 @@ final class TemperatureExperiment implements LessonView {
                 break;
         }
     }
+
+    /**
+     * The phone's own delay from "play!" to hearing it (speaker, microphone, buffers). It is measured on every
+     * chirp and cancels out of the result by itself; shown so one can see the auto-calibration at work.
+     */
+    private void measureLatency(double pos) {
+        if (playCmdSample < 0) return;
+        float ms = (float) ((pos - playCmdSample) * 1000.0 / rate) - 50;     // the chirp starts 50 ms into its sound
+        if (ms > 0 && ms < 1500) latencyMs = ms;
+        playCmdSample = -1;
+    }
+
+    float latencyMs() { return latencyMs; }
 
     static double median(List<Double> v) {
         double[] a = new double[v.size()];
@@ -572,10 +592,6 @@ final class TemperatureExperiment implements LessonView {
         k.line(c, bx - 16 * dp, y + 6 * dp, ax + 16 * dp, y + 6 * dp, LessonKit.YELLOW, 2);
         k.label(c, "пік A →", (ax + bx) / 2, y - 12 * dp, 10, LessonKit.CYAN, Paint.Align.CENTER, false);
         k.label(c, "← пік B", (ax + bx) / 2, y + 22 * dp, 10, LessonKit.YELLOW, Paint.Align.CENTER, false);
-        if (!ruler && !Double.isNaN(estimate) && role == Role.LEADER) {
-            k.label(c, String.format(Locale.US, "звук каже ≈ %.2f м", estimate), (ax + bx) / 2, y + 56 * dp, 10, LessonKit.YELLOW,
-                    Paint.Align.CENTER, false);
-        }
         k.label(c, ruler ? (Double.isNaN(lastDistance) ? "d = ?" : String.format(Locale.US, "d = %.2f м", lastDistance)) : "d = " + fmtM(distance),
                 (ax + bx) / 2, y + 40 * dp, 12, LessonKit.WHITE, Paint.Align.CENTER, true);
 
@@ -600,12 +616,16 @@ final class TemperatureExperiment implements LessonView {
         k.rect(c, mx, my - 9 * dp, mx + mw, my + 1 * dp, 0xFF1E293B);
         k.rect(c, mx, my - 9 * dp, mx + mw * lvl, my + 1 * dp, lvl > 0.6f ? LessonKit.YELLOW : LessonKit.CYAN);
         k.label(c, "чую піків: " + heardChirps, mx + mw, my + 14 * dp, 9.5f, LessonKit.LABEL, Paint.Align.RIGHT, false);
+        if (!Float.isNaN(latencyMs)) {
+            k.label(c, String.format(Locale.US, "⚙ затримка телефона %.0f мс — врахована сама", latencyMs),
+                    8 * dp, my + 30 * dp, 9.5f, LessonKit.LABEL, Paint.Align.LEFT, false);
+        }
 
         double cs = speed();
         if (ruler && role == Role.LEADER) { drawRuler(c, w, h); return; }
         drawThermometer(c, w - 46 * dp, 60 * dp, h - 20 * dp, cs);
 
-        float top = 184 * dp, right = w - 96 * dp;
+        float top = 200 * dp, right = w - 96 * dp;
         if (role == Role.RESPONDER) {
             k.label(c, "Цей телефон тільки відповідає.", 8 * dp, top + 10 * dp, 12, LessonKit.SOFT, Paint.Align.LEFT, false);
             k.label(c, "Результат з'явиться на телефоні A.", 8 * dp, top + 28 * dp, 12, LessonKit.SOFT, Paint.Align.LEFT, false);
