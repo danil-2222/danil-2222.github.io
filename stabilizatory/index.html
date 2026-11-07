@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стабілізатори в наявності</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a switchboard spec sheet. Latest verdict first, then two sortable tables (main and budget), then the check log. */
+:root {
+  --bg: #f3f5f6; --surface: #ffffff; --fg: #1b2328; --muted: #5a6871; --line: #d5dce0;
+  --accent: #a85f00; --accent-soft: #fbeed9;
+  --good: #1c7a4d; --good-soft: #dff3e8; --warn: #96650a; --warn-soft: #f9eecf; --bad: #b0392c; --bad-soft: #fae3df;
+  --sans: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #12181c; --surface: #1a2227; --fg: #e7ecef; --muted: #9aa8b1; --line: #303c43;
+  --accent: #f0ac4b; --accent-soft: #3b2c14;
+  --good: #63cf9b; --good-soft: #15352a; --warn: #e6bd62; --warn-soft: #382d12; --bad: #f08f82; --bad-soft: #3d1f1b;
+  color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 15px/1.5 var(--sans); }
+main { max-width: 1320px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right)) 48px max(16px, env(safe-area-inset-left)); display: grid; gap: 28px; }
+main > * { min-width: 0; }
+h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.15; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 4px; text-wrap: balance; }
+p { margin: 0; max-width: 70ch; }
+.muted { color: var(--muted); }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, .wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.verdict { background: var(--surface); border: 2px solid var(--accent); border-radius: 8px; padding: 16px 18px; display: grid; gap: 6px; }
+.verdict small { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); font-weight: 500; }
+.verdict b { font-size: 19px; line-height: 1.3; font-weight: 500; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 20px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+
+.sort { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-block: 10px; }
+.sort span { color: var(--muted); font-size: 14px; }
+.sort button { font: 500 14px var(--sans); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+.sort button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--surface); vertical-align: bottom; line-height: 1.25; }
+.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.first { position: sticky; left: 0; background: var(--surface); width: 200px; min-width: 200px; max-width: 200px; border-right: 1px solid var(--line); z-index: 1; }
+.first b { display: block; line-height: 1.25; font-weight: 500; }
+.first a { font-size: 13px; }
+.stock { width: 210px; min-width: 210px; }
+.stock small, .first small { display: block; color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 4px; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 13px; white-space: nowrap; }
+.good { background: var(--good-soft); color: var(--good); }
+.warn { background: var(--warn-soft); color: var(--warn); }
+.bad { background: var(--bad-soft); color: var(--bad); }
+.new { background: var(--accent); color: var(--surface); font-weight: 700; }
+.price { font-weight: 500; }
+.change { color: var(--accent); font-size: 13px; }
+.empty { padding: 16px; color: var(--muted); }
+
+.log { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; max-width: 80ch; }
+.log li { display: grid; grid-template-columns: 12em 1fr; gap: 12px; font-size: 14px; }
+.log time { font-family: var(--mono); color: var(--muted); font-size: 13px; }
+@media (max-width: 480px) { .log li { grid-template-columns: 1fr; gap: 0; } }
+.notes { display: grid; gap: 6px; padding-left: 18px; margin: 8px 0 0; max-width: 72ch; }
+.err { background: var(--bad-soft); color: var(--bad); padding: 12px 16px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Стабілізатори в наявності</h1>
+    <p class="muted">Однофазні стабілізатори для мережі, що просідає до 140 В. Claude перевіряє магазини 5 разів на день: о 7:39, 10:39, 13:39, 19:39 і 21:39 за Києвом.</p>
+  </header>
+
+  <section class="verdict" aria-live="polite">
+    <small id="when">Завантаження…</small>
+    <b id="summary"></b>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <div class="sort" role="group" aria-label="Сортування">
+    <span>Сортувати:</span>
+    <button type="button" data-k="stock" aria-pressed="true">Наявність</button>
+    <button type="button" data-k="price" aria-pressed="false">Ціна</button>
+    <button type="button" data-k="kw" aria-pressed="false">кВт при 140 В</button>
+  </div>
+
+  <section>
+    <h2>Основна категорія: близько 8 кВт при 140 В</h2>
+    <p class="muted">Струм від 50 А, робочий вхід від 120 В або нижче, бюджет до 45 000 грн.</p>
+    <div class="wrap" tabindex="0" aria-label="Основна категорія, таблиця прокручується вбік"><table><thead><tr>
+      <th class="first">Модель</th><th>Наявність і магазин</th><th>Ціна, грн</th><th>Струм, А</th><th>При 140 В, кВт</th><th>Робочий вхід, В</th><th>Точність</th><th>Тип</th><th>Гарантія</th>
+    </tr></thead><tbody id="main"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Бюджетна категорія: 5–6 кВт при 140 В</h2>
+    <p class="muted">Струм 36–49 А. Тут завжди є хоча б один варіант дешевше 20 000 грн, якщо такий знайдеться.</p>
+    <div class="wrap" tabindex="0" aria-label="Бюджетна категорія, таблиця прокручується вбік"><table><thead><tr>
+      <th class="first">Модель</th><th>Наявність і магазин</th><th>Ціна, грн</th><th>Струм, А</th><th>При 140 В, кВт</th><th>Робочий вхід, В</th><th>Точність</th><th>Тип</th><th>Гарантія</th>
+    </tr></thead><tbody id="budget"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Історія перевірок</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section>
+    <h2>Перед покупкою</h2>
+    <ul class="notes">
+      <li>Зателефонуйте продавцю: наявність змінюється за години.</li>
+      <li>«При 140 В» це розрахунок: струм × 140 В. Знак ~ означає, що струм виведений із потужності.</li>
+      <li>«Точно» в дужках означає діапазон, де стабілізатор тримає заявлену точність. У ширшому робочому діапазоні він працює, але грубіше.</li>
+      <li>Струм понад 50 А має витримувати проводка і вступний автомат.</li>
+    </ul>
+  </section>
+</main>
+<script>
+const S={now:['Є в наявності',0,'good'],wait:['Під замовлення',1,'warn'],ask:['Треба уточнити',2,'warn'],none:['Немає',3,'bad']};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kw=n=>typeof n==='number'?n.toFixed(1).replace('.',','):esc(n);
+let data=null,key='stock';
+const keys={stock:(a,b)=>(S[a.status]?.[1]??9)-(S[b.status]?.[1]??9)||(b.new-a.new)||a.price-b.price,price:(a,b)=>a.price-b.price,kw:(a,b)=>(b.kw140||0)-(a.kw140||0)};
+function row(d){const s=S[d.status]||['?',9,'warn'];return `<tr>
+  <td class="first">${d.new?'<span class="chip new">Нове</span> ':''}<b>${esc(d.name)}</b><a href="${esc(d.url)}" target="_blank" rel="noopener">Відкрити в магазині</a>${d.note?`<small>${esc(d.note)}</small>`:''}</td>
+  <td class="stock"><span class="chip ${s[2]}">${s[0]}</span><small>${esc(d.store)}: ${esc(d.status_text)}</small>${d.change?`<small class="change">${esc(d.change)}</small>`:''}</td>
+  <td class="n price">${esc(d.price_text)}</td><td class="n">${esc(d.amps)}</td>
+  <td class="n"><span class="chip ${d.kw140>=7?'good':'warn'}">${kw(d.kw140)}</span></td>
+  <td class="n">${esc(d.vin)}</td><td class="n">${esc(d.acc)}</td><td>${esc(d.type)}</td><td>${esc(d.warranty)}</td></tr>`;}
+function render(){
+  for(const c of ['main','budget']){const r=data.items.filter(d=>d.cat===c).sort(keys[key]);
+    document.getElementById(c).innerHTML=r.length?r.map(row).join(''):'<tr><td class="empty" colspan="9">Поки нічого не знайдено.</td></tr>';}
+}
+function fmt(t){const d=new Date(t);return isNaN(d)?esc(t):d.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});}
+fetch('data.json?t='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(j=>{
+  data=j;
+  document.getElementById('when').textContent='Оновлено '+fmt(j.updated_at);
+  document.getElementById('summary').textContent=j.summary||'';
+  const it=j.items||[],now=it.filter(d=>d.status==='now'),cheap=now.filter(d=>d.price<20000);
+  document.getElementById('stats').innerHTML=`<span>В наявності: ${now.length}</span><span>Дешевше 20 000 грн: ${cheap.length}</span><span>Нових: ${it.filter(d=>d.new).length}</span><span>Усього в списку: ${it.length}</span>`;
+  document.getElementById('log').innerHTML=(j.log||[]).slice().reverse().slice(0,30).map(l=>`<li><time>${fmt(l.time)}</time><span>${esc(l.text)}</span></li>`).join('');
+  render();
+}).catch(e=>{document.getElementById('when').textContent='Помилка';document.getElementById('summary').innerHTML='<span class="err">Не вдалося завантажити дані. Оновіть сторінку за хвилину.</span>';});
+document.querySelectorAll('.sort button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.sort button').forEach(x=>x.setAttribute('aria-pressed',x===b));key=b.dataset.k;if(data)render();}));
+</script>
+</body>
+</html>
