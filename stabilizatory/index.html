@@ -85,8 +85,8 @@ th { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--s
 
   <div class="sort" role="group" aria-label="Сортування">
     <span>Сортувати:</span>
-    <button type="button" data-k="stock" aria-pressed="true">Наявність</button>
-    <button type="button" data-k="price" aria-pressed="false">Ціна</button>
+    <button type="button" data-k="price" aria-pressed="true">Ціна: від дешевших</button>
+    <button type="button" data-k="stock" aria-pressed="false">Наявність</button>
     <button type="button" data-k="kw" aria-pressed="false">кВт при 140 В</button>
   </div>
 
@@ -125,7 +125,7 @@ th { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--s
 const S={now:['Є в наявності',0,'good'],wait:['Під замовлення',1,'warn'],ask:['Треба уточнити',2,'warn'],none:['Немає',3,'bad']};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const kw=n=>typeof n==='number'?n.toFixed(1).replace('.',','):esc(n);
-let data=null,key='stock';
+let data=null,key='price';
 const keys={stock:(a,b)=>(S[a.status]?.[1]??9)-(S[b.status]?.[1]??9)||(b.new-a.new)||a.price-b.price,price:(a,b)=>a.price-b.price,kw:(a,b)=>(b.kw140||0)-(a.kw140||0)};
 function row(d){const s=S[d.status]||['?',9,'warn'];return `<tr>
   <td class="first">${d.new?'<span class="chip new">Нове</span> ':''}<b>${esc(d.name)}</b><a href="${esc(d.url)}" target="_blank" rel="noopener">Відкрити в магазині</a>${d.note?`<small>${esc(d.note)}</small>`:''}</td>
