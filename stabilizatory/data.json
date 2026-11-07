@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-11-07T10:20:00+02:00",
+ "updated_at": "2026-11-07T10:35:00+02:00",
  "summary": "Повний пошук: 46 пропозицій в наявності (майже всі в Minus-Plus). Найдешевший на ~8,8 кВт: Рета НОНС-14 кВт Breeze 63А за 27 900 грн. Дешевше 20 000 грн: Reta Shteel НОНС-10000/7-3 (16 ступенів) (18 000), Укртехнологія НСН-9000 Norma (19 700), Рета НОНС-9,0 кВт Breeze 40А (19 900).",
  "items": [
   {
@@ -784,9 +784,9 @@
   {
    "name": "Stabex VS-15KVA",
    "cat": "main",
-   "status": "ask",
+   "status": "none",
    "store": "Stabex (виробник)",
-   "status_text": "—",
+   "status_text": "Немає в наявності",
    "price": 39700,
    "price_text": "39 700",
    "amps": "75",
@@ -797,7 +797,7 @@
    "warranty": "36 міс",
    "url": "https://stabex.com.ua/product/stabilizator-naprugy-vs15kva/",
    "new": false,
-   "change": "",
+   "change": "Було: статус не вказаний",
    "note": "Статусу наявності на сторінці немає; у SILS «Немає в наявності»"
   },
   {
@@ -1597,6 +1597,139 @@
    "new": false,
    "change": "",
    "note": "На A-Trade — «Повідомити про наявність»"
+  },
+  {
+   "name": "Europower ESCR-15KW LCD",
+   "cat": "main",
+   "status": "wait",
+   "store": "PARSER.ua (Hotline)",
+   "status_text": "Відправка зі складу 7–14 днів",
+   "price": 22565,
+   "price_text": "22 565",
+   "amps": "~68",
+   "kw140": 9.5,
+   "vin": "95–275",
+   "acc": "±5%",
+   "type": "Симісторний",
+   "warranty": "12 міс.",
+   "url": "https://hotline.ua/ua/computer-stabilizatory-napryazheniya/europower-scr-15kw-lcd/",
+   "new": true,
+   "change": "",
+   "note": ""
+  },
+  {
+   "new": true,
+   "change": "",
+   "note": "",
+   "name": "Елекс Ампер-Т У 16-1/50 v2.1",
+   "cat": "main",
+   "status": "wait",
+   "store": "Stabilizatori.com",
+   "status_text": "Під замовлення 21 день",
+   "price": 32000,
+   "price_text": "32 000",
+   "amps": "50",
+   "kw140": 7.0,
+   "vin": "100–295 (точно 145–275)",
+   "acc": "±3,5%",
+   "type": "Тиристорний",
+   "warranty": "36 міс.",
+   "url": "https://stabilizatori.com/stabilizator-naprjazhenija-eleks-amper-16-1-50a-t-11000-v2-0-ua"
+  },
+  {
+   "new": true,
+   "change": "",
+   "note": "220volt вказує робочий 145–275 і вимкнення 120 В; Minus-Plus — робочий 100–295.",
+   "name": "Елекс Ампер-Т У 16-1/50 v2.1",
+   "cat": "main",
+   "status": "wait",
+   "store": "220volt",
+   "status_text": "Немає в наявності, термін поставки 2–3 тижні",
+   "price": 29300,
+   "price_text": "29 300",
+   "amps": "50",
+   "kw140": 7.0,
+   "vin": "145–275, вимкнення 120",
+   "acc": "±3,5%",
+   "type": "Тиристорний",
+   "warranty": "36 міс.",
+   "url": "https://220volt.com.ua/ua/stabilizator-napryazheniya-eleks-amper-t-u-16-1-50-11000-v2-1/"
+  },
+  {
+   "new": true,
+   "change": "",
+   "note": "",
+   "name": "Елекс Ампер-Р У 16-1/50 v2.1",
+   "cat": "main",
+   "status": "wait",
+   "store": "220volt",
+   "status_text": "Немає в наявності, термін поставки 2–3 тижні",
+   "price": 32400,
+   "price_text": "32 400",
+   "amps": "50",
+   "kw140": 7.0,
+   "vin": "120–275, вимкнення 120",
+   "acc": "±3,5%",
+   "type": "Симісторний/тиристорний",
+   "warranty": "36 міс.",
+   "url": "https://220volt.com.ua/ua/stabilizator-napryazheniya-eleks-amper-r-u-16-1-50-11000-v2-1/"
+  },
+  {
+   "new": true,
+   "change": "",
+   "note": "Уточніть термін передзамовлення.",
+   "name": "Stabex VS-10KVA",
+   "cat": "main",
+   "status": "ask",
+   "store": "Electro100",
+   "status_text": "Передзамовлення, термін не вказаний",
+   "price": 25000,
+   "price_text": "25 000",
+   "amps": "50",
+   "kw140": 7.0,
+   "vin": "90–310 (точно 120–290)",
+   "acc": "—",
+   "type": "Симісторний",
+   "warranty": "36 міс.",
+   "url": "https://electro100.ua/stabilizator-naprugi-stabex-vs-10kva"
+  },
+  {
+   "name": "Рета НОНС-9 кВт Breeze 40А",
+   "cat": "budget",
+   "status": "now",
+   "store": "Minus-Plus",
+   "status_text": "В наявності",
+   "price": 19900,
+   "price_text": "19 900",
+   "amps": "40",
+   "kw140": 5.6,
+   "vin": "103–278 (точно 123–258)",
+   "acc": "до ±7%",
+   "type": "Симісторний",
+   "warranty": "10 років",
+   "url": "https://minus-plus.com.ua/ru/stabilizator-naprjazhenija-reta-nons-9-0-kvt-breeze-40a/",
+   "new": true,
+   "change": "",
+   "note": ""
+  },
+  {
+   "new": true,
+   "change": "",
+   "note": "",
+   "name": "Рета НОНС-9 кВт Normic 40А",
+   "cat": "budget",
+   "status": "now",
+   "store": "Minus-Plus",
+   "status_text": "В наявності",
+   "price": 23100,
+   "price_text": "23 100",
+   "amps": "40",
+   "kw140": 5.6,
+   "vin": "110–280 (точно 135–260)",
+   "acc": "4%",
+   "type": "Симісторний",
+   "warranty": "10 років",
+   "url": "https://minus-plus.com.ua/stabilizator-naprugi-reta-nons-9-0-kvt-normic-40a/"
   }
  ],
  "log": [
@@ -1605,8 +1738,16 @@
    "text": "Початковий список: 8 моделей, 5 в наявності."
   },
   {
+   "time": "2026-11-07T10:04:00+02:00",
+   "text": "Перевірено ~55 сторінок товарів і 20 каталогів/пошуків OLX. Додано 8 записів (3 в наявності, 3 під замовлення, 2 статус неясний). Stabex VS-15KVA: немає в наявності. Видалено Norma 15000 Exclusive (не підходить: від 130 В). Ціни попередніх товарів без змін."
+  },
+  {
    "time": "2026-11-07T10:20:00+02:00",
    "text": "Повний ручний пошук: перевірено близько 370 сторінок, знайдено 84 пропозицій, з них 46 в наявності."
+  },
+  {
+   "time": "2026-11-07T10:35:00+02:00",
+   "text": "Додано знахідки з запуску о 10:04: Europower ESCR-15KW LCD — PARSER.ua (Hotline); Елекс Ампер-Т У 16-1/50 v2.1 — Stabilizatori.com; Елекс Ампер-Т У 16-1/50 v2.1 — 220volt; Елекс Ампер-Р У 16-1/50 v2.1 — 220volt; Stabex VS-10KVA — Electro100; Рета НОНС-9 кВт Breeze 40А — Minus-Plus; Рета НОНС-9 кВт Normic 40А — Minus-Plus. Stabex VS-15KVA: немає в наявності."
   }
  ]
 }
